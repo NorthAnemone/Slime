@@ -119,7 +119,7 @@ func _build_interface() -> void:
 	var controls := _label("WASD  move     MOUSE  aim & spit     E  fuse     Q  split", 12, Color("ffd66d"))
 	controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(controls)
-	var build_label := _label("BUILD 0.2 · LOCAL DUNGEON INCLUDED", 10, Color("60736d"))
+	var build_label := _label("BUILD 0.3 · 3D DUNGEON SCENE", 10, Color("60736d"))
 	build_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(build_label)
 
