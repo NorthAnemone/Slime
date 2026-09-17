@@ -14,7 +14,7 @@ For a quick local test, run two editor instances and join `127.0.0.1` from the s
 
 ### Single-computer local co-op
 
-Select **Local 2-Player Test** from the title screen. This runs both slimes in one Godot instance and does not open a server or require a second copy of the game.
+Select **Local Dungeon** from the title screen—the third option beside **Host Dungeon** and **Join Dungeon**. This runs both slimes in one Godot instance and does not open a server, require an IP address, or require a second copy of the game.
 
 | Player | Movement | Attack | Fuse | Split |
 | --- | --- | --- | --- | --- |
