@@ -58,6 +58,10 @@ var walls: Array[Rect2] = [
 
 
 func _ready() -> void:
+	camera = get_node_or_null("MainCamera") as Camera3D
+	if camera:
+		camera.make_current()
+		camera.look_at(Vector3.ZERO, Vector3.UP)
 	_build_dungeon()
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 
@@ -690,32 +694,9 @@ func _find_latest_local_body() -> Dictionary:
 
 
 func _build_dungeon() -> void:
-	var environment := WorldEnvironment.new()
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("071018")
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("8bb6a4")
-	env.ambient_light_energy = 0.48
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	environment.environment = env
-	add_child(environment)
-
-	var light := DirectionalLight3D.new()
-	light.rotation_degrees = Vector3(-56, -35, 0)
-	light.light_color = Color("dcffe9")
-	light.light_energy = 1.2
-	light.shadow_enabled = true
-	add_child(light)
-
-	var floor_mesh := MeshInstance3D.new()
-	var floor_box := BoxMesh.new()
-	floor_box.size = Vector3(WORLD_HALF.x * 2, 0.35, WORLD_HALF.y * 2)
-	floor_mesh.mesh = floor_box
-	floor_mesh.position.y = -0.3
-	floor_mesh.material_override = _material(Color("111b24"), 0.88)
-	add_child(floor_mesh)
-
+	var geometry_parent := get_node_or_null("GeneratedGeometry") as Node3D
+	if geometry_parent == null:
+		geometry_parent = self
 	for wall in walls:
 		var wall_mesh := MeshInstance3D.new()
 		var box := BoxMesh.new()
@@ -723,7 +704,7 @@ func _build_dungeon() -> void:
 		wall_mesh.mesh = box
 		wall_mesh.position = Vector3(wall.position.x + wall.size.x / 2.0, 1.4, wall.position.y + wall.size.y / 2.0)
 		wall_mesh.material_override = _material(Color("2c3b42"), 0.82)
-		add_child(wall_mesh)
+		geometry_parent.add_child(wall_mesh)
 
 	for x in range(-32, 33, 4):
 		for z in range(-20, 21, 4):
@@ -736,7 +717,7 @@ func _build_dungeon() -> void:
 			tile.position = Vector3(x, -0.1, z)
 			tile.rotation.y = (x + z) * 0.13
 			tile.material_override = _material(Color(0.25, 0.48, 0.38, 0.2), 1.0)
-			add_child(tile)
+			geometry_parent.add_child(tile)
 
 	portal_visual = _create_portal()
 	portal_visual.position = Vector3(32, 0.1, 0)
@@ -752,13 +733,6 @@ func _build_dungeon() -> void:
 	aim_marker.mesh = ring
 	aim_marker.material_override = _material(Color("d9ffe5"), 0.45)
 	add_child(aim_marker)
-
-	camera = Camera3D.new()
-	camera.fov = 55
-	camera.current = true
-	camera.position = Vector3(0, 16, 13)
-	add_child(camera)
-	camera.look_at(Vector3.ZERO)
 
 
 func _create_portal() -> Node3D:
