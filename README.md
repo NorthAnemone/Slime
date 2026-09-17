@@ -46,6 +46,7 @@ Both players must offer fusion while their slimes are close. Once fused, both mo
 - Forced split on defeat and voluntary split with `Q`
 - Dungeon creatures, collectible cores, healing, heart gate, and escalating floors
 - Entirely procedural primitive art, so there are no external asset dependencies
+- Explicit `game_world.tscn` 3D scene with a current camera, lit dungeon floor, spawn dais, rune glow, environment, generated walls, and runtime actors
 
 ## Architecture
 
