@@ -1,6 +1,6 @@
 extends Node
 
-const SlimeWorld = preload("res://scripts/slime_world.gd")
+const SlimeWorldScene = preload("res://scenes/game_world.tscn")
 const PORT := 7777
 const MAX_PLAYERS := 6
 
@@ -257,7 +257,7 @@ func _enter_game(hosting: bool) -> void:
 func _create_world() -> void:
 	menu.hide()
 	game_hud.show()
-	world = SlimeWorld.new()
+	world = SlimeWorldScene.instantiate()
 	add_child(world)
 	move_child(world, 0)
 	world.toast_requested.connect(_show_toast)
