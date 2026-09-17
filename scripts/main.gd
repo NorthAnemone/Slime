@@ -96,17 +96,19 @@ func _build_interface() -> void:
 	join_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	join_button.pressed.connect(_join_game)
 	buttons.add_child(join_button)
-	var local_button := _button("LOCAL 2-PLAYER TEST", Color("6753a3"), Color("ffffff"))
+	var local_button := _button("LOCAL DUNGEON", Color("6753a3"), Color("ffffff"))
+	local_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	local_button.pressed.connect(_local_game)
-	column.add_child(local_button)
+	buttons.add_child(local_button)
 
+	column.add_child(_label("HOST IP — JOIN DUNGEON ONLY", 11, Color("91a29e")))
 	address_input = LineEdit.new()
-	address_input.placeholder_text = "Server address"
+	address_input.placeholder_text = "Not needed for Local Dungeon"
 	address_input.text = "127.0.0.1"
 	address_input.custom_minimum_size.y = 42
 	column.add_child(address_input)
 
-	status_label = _label("Host a game, then share your IP address and port 7777.", 13, Color("91a29e"))
+	status_label = _label("Local Dungeon is offline. Host and Join use port 7777.", 13, Color("91a29e"))
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(status_label)
 
@@ -211,7 +213,7 @@ func _local_game() -> void:
 		player_name = "Gloob"
 	world.setup_local_coop(player_name, "Arrow Slime")
 	help_label.text = "P1: WASD · MOUSE · E/Q       P2: ARROWS · M ATTACK · N FUSE · B SPLIT"
-	_show_toast("Local co-op ready: WASD versus arrow keys")
+	_show_toast("Local Dungeon ready: no server or IP required")
 
 
 func _join_game() -> void:
