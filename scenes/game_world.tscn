@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource path="res://scripts/slime_world.gd" type="Script" id="1_world"]
 
@@ -6,51 +6,10 @@
 background_mode = 1
 background_color = Color(0.018, 0.029, 0.043, 1)
 ambient_light_source = 3
-ambient_light_color = Color(0.43, 0.64, 0.55, 1)
-ambient_light_energy = 0.72
+ambient_light_color = Color(0.55, 0.62, 0.75, 1)
+ambient_light_energy = 0.25
 reflected_light_source = 2
 tonemap_mode = 2
-
-[sub_resource type="StandardMaterial3D" id="Material_floor"]
-albedo_color = Color(0.055, 0.09, 0.12, 1)
-roughness = 0.9
-
-[sub_resource type="BoxMesh" id="Mesh_floor"]
-material = SubResource("Material_floor")
-size = Vector3(72, 0.5, 48)
-
-[sub_resource type="StandardMaterial3D" id="Material_dais"]
-albedo_color = Color(0.17, 0.28, 0.25, 1)
-metallic = 0.18
-roughness = 0.55
-
-[sub_resource type="CylinderMesh" id="Mesh_dais"]
-material = SubResource("Material_dais")
-top_radius = 3.2
-bottom_radius = 3.5
-height = 0.35
-radial_segments = 32
-
-[sub_resource type="StandardMaterial3D" id="Material_rune"]
-albedo_color = Color(0.25, 1, 0.52, 1)
-emission_enabled = true
-emission = Color(0.12, 0.86, 0.39, 1)
-emission_energy_multiplier = 2.2
-
-[sub_resource type="TorusMesh" id="Mesh_rune"]
-material = SubResource("Material_rune")
-inner_radius = 1.35
-outer_radius = 1.48
-rings = 24
-ring_segments = 32
-
-[sub_resource type="StandardMaterial3D" id="Material_void"]
-albedo_color = Color(0.025, 0.04, 0.055, 1)
-roughness = 1.0
-
-[sub_resource type="PlaneMesh" id="Mesh_void"]
-material = SubResource("Material_void")
-size = Vector2(180, 140)
 
 [node name="SlimeWorld" type="Node3D"]
 script = ExtResource("1_world")
@@ -60,8 +19,8 @@ environment = SubResource("Environment_dungeon")
 
 [node name="MoonLight" type="DirectionalLight3D" parent="."]
 rotation = Vector3(-0.96, -0.62, 0)
-light_color = Color(0.77, 0.96, 0.86, 1)
-light_energy = 1.35
+light_color = Color(1, 0.89, 0.73, 1)
+light_energy = 0.55
 shadow_enabled = true
 
 [node name="MainCamera" type="Camera3D" parent="."]
@@ -71,29 +30,6 @@ fov = 55.0
 near = 0.1
 far = 160.0
 
-[node name="VoidFloor" type="MeshInstance3D" parent="."]
-position = Vector3(0, -0.6, 0)
-mesh = SubResource("Mesh_void")
-
-[node name="DungeonFloor" type="MeshInstance3D" parent="."]
-position = Vector3(0, -0.35, 0)
-mesh = SubResource("Mesh_floor")
-
-[node name="SpawnDais" type="MeshInstance3D" parent="."]
-position = Vector3(0, -0.05, 0)
-mesh = SubResource("Mesh_dais")
-
-[node name="SpawnRune" type="MeshInstance3D" parent="."]
-position = Vector3(0, 0.16, 0)
-mesh = SubResource("Mesh_rune")
-
-[node name="SpawnGlow" type="OmniLight3D" parent="."]
-position = Vector3(0, 1.2, 0)
-light_color = Color(0.28, 1, 0.55, 1)
-light_energy = 2.1
-omni_range = 10.0
-
 [node name="GeneratedGeometry" type="Node3D" parent="."]
 
 [node name="Actors" type="Node3D" parent="."]
-

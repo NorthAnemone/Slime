@@ -19,9 +19,12 @@ var help_label: Label
 var toast_panel: PanelContainer
 var toast_label: Label
 var toast_tween: Tween
+var boss_bar: ProgressBar
+var encounter_label: Label
 
 
 func _ready() -> void:
+	_configure_inputs()
 	_build_interface()
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(_on_connection_failed)
@@ -47,15 +50,15 @@ func _build_interface() -> void:
 	var card := PanelContainer.new()
 	card.custom_minimum_size = Vector2(590, 0)
 	card.set_anchors_preset(Control.PRESET_CENTER)
-	card.position = Vector2(-295, -260)
+	card.position = Vector2(-295, -325)
 	card.add_theme_stylebox_override("panel", _panel_style(Color("111b24"), 28, Color(0.37, 0.95, 0.57, 0.25)))
 	menu.add_child(card)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 48)
 	margin.add_theme_constant_override("margin_right", 48)
-	margin.add_theme_constant_override("margin_top", 42)
-	margin.add_theme_constant_override("margin_bottom", 42)
+	margin.add_theme_constant_override("margin_top", 24)
+	margin.add_theme_constant_override("margin_bottom", 24)
 	card.add_child(margin)
 
 	var column := VBoxContainer.new()
@@ -66,7 +69,7 @@ func _build_interface() -> void:
 	eyebrow.add_theme_constant_override("outline_size", 2)
 	column.add_child(eyebrow)
 
-	var title := _label("SLIMEBOUND", 62, Color("effff3"))
+	var title := _label("SLIMEBOUND", 52, Color("effff3"))
 	title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.5))
 	title.add_theme_constant_override("shadow_offset_x", 3)
 	title.add_theme_constant_override("shadow_offset_y", 4)
@@ -116,10 +119,10 @@ func _build_interface() -> void:
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(status_label)
 
-	var controls := _label("WASD  move     MOUSE  aim & spit     E  fuse     Q  split", 12, Color("ffd66d"))
+	var controls := _label("Solo: leave slowing trails · Collect powers · Fuse to fight", 12, Color("ffd66d"))
 	controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(controls)
-	var build_label := _label("BUILD 0.3 · 3D DUNGEON SCENE", 10, Color("60736d"))
+	var build_label := _label("BUILD 0.4 · THE MOSS WARDEN · CC0 ASSETS", 10, Color("60736d"))
 	build_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(build_label)
 
@@ -142,11 +145,19 @@ func _build_hud() -> void:
 
 	objective_label = _pill("CLEAR THE DUNGEON", Color("ffd66d"))
 	objective_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	objective_label.position = Vector2(-110, 18)
-	objective_label.size = Vector2(220, 38)
+	objective_label.position = Vector2(-235, 18)
+	objective_label.size = Vector2(470, 38)
 	objective_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	game_hud.add_child(objective_label)
 
+	encounter_label = _pill("", Color("d8e8df"))
+	encounter_label.position = Vector2(22, 60)
+	game_hud.add_child(encounter_label)
+	boss_bar = ProgressBar.new()
+	boss_bar.position = Vector2(390, 100)
+	boss_bar.size = Vector2(500, 22)
+	boss_bar.show_percentage = true
+	game_hud.add_child(boss_bar)
 	var roster_panel := PanelContainer.new()
 	roster_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	roster_panel.position = Vector2(-218, 70)
@@ -179,19 +190,19 @@ func _build_hud() -> void:
 	health_label.size = Vector2(350, 22)
 	health_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	health_bar.add_child(health_label)
-	fusion_label = _label("SOLO SLIME", 12, Color("91a29e"))
+	fusion_label = _pill("SOLO SLIME", Color("d8e8df"))
 	stats.add_child(fusion_label)
 
-	help_label = _label("E  FUSE NEARBY     Q  SPLIT     CLICK  SPIT GEL", 11, Color("91a29e"))
+	help_label = _pill("E fuse · Q split · F collect · Click fight (fused only) · Esc menu", Color("d8e8df"))
 	help_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	help_label.position = Vector2(-540, -44)
-	help_label.size = Vector2(518, 22)
+	help_label.position = Vector2(-680, -54)
+	help_label.size = Vector2(658, 42)
 	help_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	game_hud.add_child(help_label)
 
 	toast_panel = PanelContainer.new()
-	toast_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	toast_panel.position = Vector2(-225, 72)
+	toast_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	toast_panel.position = Vector2(-225, -158)
 	toast_panel.size = Vector2(450, 48)
 	toast_panel.modulate.a = 0.0
 	toast_panel.add_theme_stylebox_override("panel", _panel_style(Color("72ef9b"), 13, Color("aaffc1")))
@@ -204,7 +215,7 @@ func _build_hud() -> void:
 
 func _host_game() -> void:
 	var peer := ENetMultiplayerPeer.new()
-	var error := peer.create_server(PORT, MAX_PLAYERS)
+	var error := peer.create_server(PORT, MAX_PLAYERS - 1)
 	if error != OK:
 		status_label.text = "Could not host: %s" % error_string(error)
 		return
@@ -219,7 +230,7 @@ func _local_game() -> void:
 	if player_name.is_empty():
 		player_name = "Gloob"
 	world.setup_local_coop(player_name, "Arrow Slime")
-	help_label.text = "P1: WASD · MOUSE · E/Q       P2: ARROWS · M ATTACK · N FUSE · B SPLIT"
+	help_label.text = "P1 WASD · Click fight · E/Q fuse/split · F collect\nP2 Arrows · M fight · N/B fuse/split · L collect · Esc menu"
 	_show_toast("Local Dungeon ready: no server or IP required")
 
 
@@ -242,7 +253,7 @@ func _on_connected_to_server() -> void:
 
 func _enter_game(hosting: bool) -> void:
 	_create_world()
-	help_label.text = "E  FUSE NEARBY     Q  SPLIT     CLICK  SPIT GEL"
+	help_label.text = "E fuse · Q split · F collect · Click fight (fused only) · Esc menu"
 	var player_name := name_input.text.strip_edges()
 	if player_name.is_empty():
 		player_name = "Gloob"
@@ -255,6 +266,7 @@ func _enter_game(hosting: bool) -> void:
 
 
 func _create_world() -> void:
+	get_viewport().gui_release_focus()
 	menu.hide()
 	game_hud.show()
 	world = SlimeWorldScene.instantiate()
@@ -263,6 +275,7 @@ func _create_world() -> void:
 	world.toast_requested.connect(_show_toast)
 	world.local_stats_changed.connect(_update_stats)
 	world.roster_changed.connect(_update_roster)
+	world.encounter_changed.connect(_update_encounter)
 
 
 func _on_connection_failed() -> void:
@@ -282,7 +295,7 @@ func _update_stats(health: float, max_health: float, member_count: int, power: f
 	health_label.text = "%d / %d" % [ceil(health), ceil(max_health)]
 	fusion_label.text = "SOLO SLIME · FIND AN ALLY" if member_count == 1 else "%d-PLAYER FUSION · %d POWER" % [member_count, round(power)]
 	fusion_label.add_theme_color_override("font_color", Color("91a29e") if member_count == 1 else Color("72ef9b"))
-	objective_label.text = "FLOOR %d · HEART GATE OPEN" % floor_number if portal_open else "FLOOR %d · %d CREATURES LEFT" % [floor_number, enemies_left]
+
 
 
 func _update_roster(roster: Array) -> void:
@@ -294,7 +307,7 @@ func _update_roster(roster: Array) -> void:
 		dot.color = entry.color
 		dot.custom_minimum_size = Vector2(9, 9)
 		row.add_child(dot)
-		var player_name := _label(entry.name, 12, Color("e8f2ed"))
+		var player_name := _label("%s  %d HP\n%s" % [entry.name, entry.health, entry.element if entry.element != "" else "No power"], 12, Color("e8f2ed"))
 		player_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(player_name)
 		row.add_child(_label("◆ %d" % entry.score, 12, Color("ffd66d")))
@@ -355,3 +368,28 @@ func _spacer(height: float) -> Control:
 	var spacer := Control.new()
 	spacer.custom_minimum_size.y = height
 	return spacer
+
+
+func _update_encounter(info: Dictionary) -> void:
+	objective_label.text = info.title
+	encounter_label.text = info.objective
+	fusion_label.text = info.power
+	boss_bar.visible = info.boss_max > 0
+	boss_bar.max_value = maxf(1, info.boss_max)
+	boss_bar.value = info.boss_health
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel") and is_instance_valid(world):
+		multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+		get_tree().reload_current_scene()
+
+func _configure_inputs() -> void:
+	var bindings = {"p2_move_left": KEY_LEFT, "p2_move_right": KEY_RIGHT,
+		"p2_move_up": KEY_UP, "p2_move_down": KEY_DOWN, "collect": KEY_F,
+		"p2_collect": KEY_L, "restart_run": KEY_R}
+	for action_name in bindings:
+		if not InputMap.has_action(action_name): InputMap.add_action(action_name)
+		InputMap.action_erase_events(action_name)
+		var event = InputEventKey.new()
+		event.physical_keycode = bindings[action_name]
+		InputMap.action_add_event(action_name, event)

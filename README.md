@@ -1,68 +1,77 @@
-# Slimebound
+# Slimebound — build 0.4
 
-Slimebound is a Godot 4 multiplayer dungeon-crawler prototype built around one unusual co-op mechanic: nearby players can consent to fuse into a single, stronger slime. Every player in the fusion shares the same body and camera perspective, and their movement inputs are combined, so steering the bigger slime requires cooperation.
+A Godot 4.3+ 3D co-op dungeon prototype. Two to six players can fuse into a shared creature; **Local Dungeon** runs two players on one keyboard with no IP address, network connection or server.
 
-## Play the prototype
+## Play the latest version
 
-1. Install **Godot 4.3 or newer**.
-2. Import `project.godot` and run the project.
-3. One player selects **Host Dungeon**.
-4. Other players enter the host's IP address and select **Join Dungeon**.
-5. Allow UDP port `7777` through the host's firewall/router when playing over the internet.
+1. Download this repository's latest ZIP (Code → Download ZIP), or pull `main`.
+2. Extract it into a fresh folder. Import its `project.godot` in Godot 4.3 or newer.
+3. Let Godot finish importing the bundled GLB models and textures, then press **F6** on `scenes/main.tscn` or **F5** for the project.
+4. Confirm the menu says **BUILD 0.4 · THE MOSS WARDEN · CC0 ASSETS**.
+5. Click **PLAY LOCAL DUNGEON — NO IP REQUIRED**, above Host and Join.
 
-For a quick local test, run two editor instances and join `127.0.0.1` from the second window.
+If you still see an older build number, you are opening an older extracted copy. Run the project from the newly downloaded folder.
 
-### Single-computer local co-op
+## Shared keyboard
 
-Select the large **Play Local Dungeon — No IP Required** option above **Host Dungeon** and **Join Dungeon**. This runs both slimes in one Godot instance and does not open a server, require an IP address, or require a second copy of the game. The updated title screen is marked `BUILD 0.3 · 3D DUNGEON SCENE` so it is easy to distinguish from an older extracted copy.
+| Action | Player 1 | Player 2 |
+| --- | --- | --- |
+| Move | WASD | Arrow keys |
+| Aim | Mouse | Automatically toward closest enemy |
+| Attack (fused only) | Left mouse / Space | M |
+| Offer fusion | E | N |
+| Split | Q | B |
+| Absorb nearby power (solo only) | F | L |
+| Restart run | R (host) | — |
+| Return to menu | Escape | Escape |
 
-| Player | Movement | Attack | Fuse | Split |
-| --- | --- | --- | --- | --- |
-| Player 1 | WASD | Mouse / Space | E | Q |
-| Player 2 | Arrow keys | M (auto-aim) | N | B |
+Stand close and press **E and N within three seconds** to fuse. Every member must offer consent when merging larger groups. Both players steer the shared body: agreeing moves it at full speed; opposite inputs cancel. Either player may split. The local camera keeps both slimes visible and follows the shared body after fusion.
 
-Both players must offer fusion while their slimes are close. Once fused, both movement vectors contribute to the same shared slime. The local camera frames both bodies while separated and converges on the shared body after fusion.
+## The full level
 
-## Controls
+- **The Nursery:** safe place to learn movement, collect powers, and fuse. Walk north together through the arch.
+- **Root Gallery:** four pursuing enemies. Solo trails slow them; fuse to defeat them and unlock the north exit.
+- **Crucible Hall:** six enemies, including tougher brutes. New power pedestals allow different combinations.
+- **Moss Warden:** a 1,400-HP boss with delayed ground slams, radial projectile volleys, summoned crawlers, and a faster second phase below half health. Move out of the red warnings before they fire. Defeat it, fuse, and enter the Heart Gate to complete the level.
 
-| Input | Action |
+Each chamber is a checkpoint. If a slime is defeated, the party reforms at that chamber with its collected powers intact and the encounter resets. R starts a fresh run. Room transitions reform the party as solo slimes so you can change powers before the next fight.
+
+## Solo and fusion rules
+
+Solo slimes **cannot deal damage**, even with a power equipped. Moving leaves a seven-second trail that slows ordinary enemies by 55% and the boss by 30%. Solo slimes are faster and can absorb one power at a time; collecting another replaces it. Pedestals replenish after one second, so both players can choose the same element.
+
+Fusion gives the team a larger body with arms and legs and enables close-range strikes. Collected powers also enable ranged attacks. Splitting keeps powers and the current health percentage; it does not heal you.
+
+| Power selection | Fused effect |
 | --- | --- |
-| WASD / arrow keys | Move |
-| Mouse | Aim |
-| Left click / Space | Spit gel |
-| E | Offer fusion; a nearby slime must also press E |
-| Q | Split the current fusion |
+| Ember | Added impact damage and burning |
+| Frost | Added impact damage and slowing |
+| Storm | Added impact damage and chain damage |
+| Same element twice | Double that element's added damage; double burn/chain damage or frost duration |
+| Ember + Frost | **Frostfire:** burning impact and slowing splash |
+| Ember + Storm | **Plasma:** splash plus burning chain attacks |
+| Frost + Storm | **Blizzard:** slowing chain attacks |
+| All three (3+ online players) | **Tempest:** burn, frost, chain and splash |
 
-## Included systems
+Matching-power scaling applies to the elemental portion, not the underlying physical strike. Larger groups can stack additional copies. There is no friendly fire.
 
-- Godot ENet host/join multiplayer for up to six players
-- Offline two-player keyboard co-op for rapid fusion testing
-- Server-authoritative movement, combat, enemies, pickups, fusion, and floor progression
-- Mutual-consent fusion between any two slime bodies
-- Shared control: movement vectors from every fused player are combined
-- Shared perspective: every member's camera follows the same fused body
-- Fusion scaling for health, damage, projectile fire rate, body size, and speed
-- Independent aiming and attacks for every player inside a fusion
-- Forced split on defeat and voluntary split with `Q`
-- Dungeon creatures, collectible cores, healing, heart gate, and escalating floors
-- Entirely procedural primitive art, so there are no external asset dependencies
-- Explicit `game_world.tscn` 3D scene with a current camera, lit dungeon floor, spawn dais, rune glow, environment, generated walls, and runtime actors
+## Online play
 
-## Architecture
+Host opens UDP port **7777**; other players join the host's reachable IP. Across the internet the host may need port forwarding. There is no matchmaking or relay. Local Dungeon never opens a port. The host owns movement, collision, powers, enemies, boss attacks, checkpoints and victory; clients send inputs and receive authoritative snapshots.
 
-The host is the simulation authority. Clients send compact movement, aim, attack, fuse, and split inputs; the host simulates the shared dungeon and broadcasts snapshots. A fused body stores multiple peer IDs, while each player retains an independent input stream. This makes the fusion a real shared entity instead of attaching one player's avatar to another.
+## Public artwork only
 
-## Current prototype limitations
+Models and visual-effect textures are bundled CC0 assets by **Kenney** and **Quaternius**. See [ASSET_CREDITS.md](ASSET_CREDITS.md) for original links and license files. The fused form uses Quaternius's existing animated Yeti as a limbed creature stand-in; no custom slime artwork was made. The boss uses the existing Mushroom King. The previous procedural character/environment meshes and custom icon have been removed.
 
-- Direct IP connection only; there is no relay, matchmaking, or NAT traversal yet.
-- Sessions are not persistent.
-- The dungeon layout is fixed while enemy positions and encounters vary.
-- Controller and mobile input are not implemented yet.
+## Verification
 
-## Good next milestones
+Run from the project folder:
 
-1. Add Steam Networking or a relay-backed lobby system.
-2. Give each fused player a distinct role, such as movement, shield, ranged attack, or special ability.
-3. Replace the fixed layout with modular procedural rooms.
-4. Add a boss designed around deliberately splitting and recombining.
-5. Add proximity voice chat and persistent cosmetic unlocks.
+```sh
+godot --headless --editor --import --quit
+godot --headless --script res://tests/gameplay_test.gd
+```
+
+For the two-process networking check, start `godot --headless --script res://tests/network_test.gd -- --server`, then start `godot --headless --script res://tests/network_test.gd` in another terminal within one second.
+
+This is a playable prototype, not a finished commercial game: four chambers, simple enemy pursuit, one boss, and no saved progression or audio yet. Difficulty and internet latency need real-player playtesting.
