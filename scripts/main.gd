@@ -85,6 +85,14 @@ func _build_interface() -> void:
 	name_input.add_theme_font_size_override("font_size", 17)
 	column.add_child(name_input)
 
+	var local_button := _button("PLAY LOCAL DUNGEON — NO IP REQUIRED", Color("6753a3"), Color("ffffff"))
+	local_button.custom_minimum_size.y = 56
+	local_button.pressed.connect(_local_game)
+	column.add_child(local_button)
+
+	var online_label := _label("ONLINE MULTIPLAYER", 11, Color("91a29e"))
+	online_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(online_label)
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 10)
 	column.add_child(buttons)
@@ -96,10 +104,6 @@ func _build_interface() -> void:
 	join_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	join_button.pressed.connect(_join_game)
 	buttons.add_child(join_button)
-	var local_button := _button("LOCAL DUNGEON", Color("6753a3"), Color("ffffff"))
-	local_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	local_button.pressed.connect(_local_game)
-	buttons.add_child(local_button)
 
 	column.add_child(_label("HOST IP — JOIN DUNGEON ONLY", 11, Color("91a29e")))
 	address_input = LineEdit.new()
@@ -115,6 +119,9 @@ func _build_interface() -> void:
 	var controls := _label("WASD  move     MOUSE  aim & spit     E  fuse     Q  split", 12, Color("ffd66d"))
 	controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(controls)
+	var build_label := _label("BUILD 0.2 · LOCAL DUNGEON INCLUDED", 10, Color("60736d"))
+	build_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(build_label)
 
 	_build_hud()
 
