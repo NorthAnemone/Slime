@@ -20,14 +20,21 @@ func run() -> void:
 	var w = game.world
 	w.stage = 3
 	w._reset_party()
-	w.players[1].element = "Ember"
-	w.players[2].element = "Frost"
+	w._award_xp(250, "visual_check")
+	w.players[1].elements = ["Ember", "Storm"]
+	w.players[1].element = "Ember + Storm"
+	w.players[2].elements = ["Frost", "Ember"]
+	w.players[2].element = "Frost + Ember"
 	w._action(1, "fuse")
 	w._action(2, "fuse")
 	w._check_fusion()
 	w._start_encounter()
 	await create_timer(2).timeout
 	await snap("slime-boss.png")
+	w.players[1].aim = Vector2(0.8, -0.6)
+	w._attack(w.players[1], w.bodies.values()[0])
+	await create_timer(0.25).timeout
+	await snap("slime-projectile.png")
 	game.queue_free()
 	await process_frame
 	quit()

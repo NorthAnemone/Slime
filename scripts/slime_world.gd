@@ -100,7 +100,7 @@ func _add_player(peer_id: int, player_name: String) -> void:
 	if players.size() >= 6 or players.has(peer_id):
 		return
 	players[peer_id] = {"id": peer_id, "name": player_name.left(18), "color": COLORS[players.size() % 6],
-		"body_id": 0, "score": 0, "element": "", "offer": 0.0, "last_input": clock,
+		"body_id": 0, "score": 0, "element": "", "elements": [], "offer": 0.0, "last_input": clock,
 		"move": Vector2.ZERO, "aim": Vector2.UP, "attack": false, "sprint": false, "shot": 0.0}
 	_solo(peer_id, Vector3(-2 + players.size() * 1.7, 0, CENTERS[stage] + 8), 1.0)
 
@@ -109,7 +109,7 @@ func _solo(peer_id: int, pos: Vector3, ratio: float) -> void:
 	var id = _id()
 	bodies[id] = {"id": id, "members": [peer_id], "position": pos, "radius": 0.7,
 		"health": maxf(1, _member_health() * ratio), "max_health": _member_health(), "color": players[peer_id].color,
-		"velocity": Vector3.ZERO, "sprinting": false, "vertical_speed": 0.0, "next_trail": 0.0, "invulnerable": clock + 1.5, "swing": 0.0, "facing": Vector2.UP}
+		"velocity": Vector3.ZERO, "sprinting": false, "vertical_speed": 0.0, "jump_buffer": 0.0, "coyote": 0.1, "jump_cut": false, "land_squash": 0.0, "next_trail": 0.0, "invulnerable": clock + 1.5, "swing": 0.0, "facing": Vector2.UP}
 	players[peer_id].body_id = id
 
 @rpc("any_peer", "call_remote", "reliable")
@@ -154,6 +154,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				action.rpc_id(1, kind)
 		if local_coop and event.is_action_pressed("p2_" + kind):
 			_action(2, kind)
+	for index in (2 if local_coop else 1):
+		if event.is_action_released("jump" if index == 0 else "p2_jump"):
+			if is_host: _action(local_peer_id if index == 0 else 2, "jump_release")
+			else: action.rpc_id(1, "jump_release")
 	if is_host and event.is_action_pressed("restart_run"):
 		_restart()
 
@@ -166,8 +170,13 @@ func _action(peer_id: int, kind: String) -> void:
 	var body = bodies[p.body_id]
 	match kind:
 		"jump":
-			if body.position.y <= terrain.elevation(body.position) + 0.05:
-				body.vertical_speed = 8.0
+			body.jump_buffer = 0.14
+			body.jump_cut = false
+			if body.position.y <= terrain.elevation(body.position) + 0.05 or body.coyote > 0:
+				_launch_jump(body)
+		"jump_release":
+			body.jump_cut = true
+			if body.vertical_speed > 4.5: body.vertical_speed = 4.5
 		"fuse":
 			p.offer = clock + 3.0
 		"split":
@@ -179,7 +188,9 @@ func _action(peer_id: int, kind: String) -> void:
 				return
 			for item in pickups.values():
 				if item.ready <= clock and _distance(item, body) < 2.3:
-					p.element = item.element
+					if p.elements.size() >= _power_capacity(): p.elements.pop_front()
+					p.elements.append(item.element)
+					p.element = " + ".join(p.elements)
 					if item.room == -1: _award_xp(35, "cache:%d" % item.id)
 					item.ready = clock + 1.0
 					_message("%s absorbed %s. Fuse to activate it!" % [p.name, p.element])
@@ -264,12 +275,18 @@ func _simulate(delta: float) -> void:
 		_move(body, body.velocity * delta)
 		if is_equal_approx(body.position.x, before.x): body.velocity.x = 0.0
 		if is_equal_approx(body.position.z, before.z): body.velocity.z = 0.0
-		body.vertical_speed -= 22.0 * delta
+		body.jump_buffer = maxf(0, body.jump_buffer - delta)
+		body.coyote = maxf(0, body.coyote - delta)
+		body.land_squash = maxf(0, body.land_squash - delta)
+		body.vertical_speed -= (38.0 if body.vertical_speed < 0 else 25.0) * delta
 		body.position.y += body.vertical_speed * delta
 		var floor_y = terrain.elevation(body.position)
 		if body.position.y <= floor_y:
+			if body.vertical_speed < -5: body.land_squash = 0.16
 			body.position.y = floor_y
 			body.vertical_speed = 0.0
+			body.coyote = 0.1
+			if body.jump_buffer > 0: _launch_jump(body)
 		if body.members.size() == 1 and clock >= body.next_trail and move.length() > 0.1 and body.position.y < floor_y + 0.1:
 			body.next_trail = clock + 0.18
 			var id = _id()
@@ -288,15 +305,14 @@ func _simulate(delta: float) -> void:
 func _powers(body: Dictionary) -> Dictionary:
 	var result = {}
 	for id in body.members:
-		var element = players[id].element
-		if element != "":
+		for element in _carried_powers(players[id]):
 			result[element] = result.get(element, 0) + 1
 	return result
 
 func _power_name(body: Dictionary) -> String:
 	var p = _powers(body)
 	if body.members.size() == 1:
-		return "SOLO · %s dormant · slowing trail" % ("no power" if p.is_empty() else p.keys()[0])
+		return "SOLO · %s dormant · slowing trail" % ("no power" if p.is_empty() else " + ".join(p.keys()))
 	if p.size() >= 3:
 		return "TEMPEST · burn + frost + chain"
 	if p.has("Ember") and p.has("Frost"):
@@ -321,8 +337,8 @@ func _attack(p: Dictionary, body: Dictionary) -> void:
 		var id = _id()
 		var aim = Vector3(p.aim.x, 0, p.aim.y)
 		shots[id] = {"id": id, "position": body.position + aim * (body.radius + 0.35),
-			"velocity": aim * 19, "damage": damage, "powers": powers,
-			"expires": clock + 1.5, "color": ELEMENTS[powers.keys()[0]], "enemy": false}
+			"velocity": aim * 23, "damage": damage, "powers": powers,
+			"expires": clock + 1.8, "color": ELEMENTS[powers.keys()[0]], "enemy": false}
 
 func _hit(enemy_id: int, damage: float, powers: Dictionary) -> void:
 	if not enemies.has(enemy_id):
@@ -376,6 +392,7 @@ func _update_shots(delta: float) -> void:
 					_hurt(target, 14)
 				else:
 					_hit(target.id, s.damage, s.powers)
+				_effect(s.position, 0.85, s.color, 0.18)
 				shots.erase(id)
 				break
 
@@ -565,6 +582,7 @@ func _restart() -> void:
 	complete = false
 	for p in players.values():
 		p.element = ""
+		p.elements.clear()
 		p.score = 0
 	_reset_party()
 	_start_encounter()
@@ -645,7 +663,7 @@ func _snapshot() -> Dictionary:
 	var roster = []
 	for p in players.values():
 		var body = bodies.get(p.body_id, {})
-		roster.append({"id": p.id, "name": p.name, "color": p.color, "score": p.score, "element": p.element,
+		roster.append({"id": p.id, "name": p.name, "color": p.color, "score": p.score, "element": p.element, "elements": _carried_powers(p), "capacity": _power_capacity(),
 			"health": body.get("health", 0), "max_health": body.get("max_health", 70)})
 	var body_array = []
 	for b in bodies.values():
@@ -785,7 +803,7 @@ func _animate(root: Node, action_name: String) -> void:
 	if anim == null:
 		return
 	for name in anim.get_animation_list():
-		if name.ends_with(action_name):
+		if name.ends_with(action_name) or (action_name == "Punch" and name.ends_with("Attack")):
 			if anim.current_animation != name or not anim.is_playing():
 				anim.get_animation(name).loop_mode = Animation.LOOP_LINEAR
 				anim.play(name, 0.12)
@@ -822,6 +840,10 @@ func _render_entities(delta: float) -> void:
 					visual.get_node("Name").text = ("FUSED  %d/%d" % [data.health, data.max_health]) if fused else "P%d" % data.members[0]
 					visual.get_node("Offer").visible = data.offering
 					visual.get_node("Power").text = ""
+					var stretch = Vector3.ONE
+					if data.land_squash > 0: stretch = Vector3(1.12, 0.8, 1.12)
+					elif absf(data.vertical_speed) > 1: stretch = Vector3(0.94, 1.12, 0.94)
+					visual.get_node("Model").scale = visual.get_node("Model").scale.lerp(stretch, 1 - exp(-delta * 22))
 					_animate(visual, "Punch" if fused and data.swing > state.clock else ("Walk" if moving else "Idle"))
 				"enemies":
 					visual.get_node("Name").text = "SLOWED" if data.slow else ""
@@ -832,7 +854,7 @@ func _render_entities(delta: float) -> void:
 				"trails":
 					visual.scale = Vector3.ONE * clampf((data.expires - state.clock) / 2, 0.1, 1.0)
 				"hazards":
-					visual.get_child(0).modulate = Color("ffe18b") if data.fired else Color(1, 0.1, 0.15, 0.85)
+					visual.get_child(0).modulate = data.get("color", Color("ffe18b")) if data.fired else Color(1, 0.1, 0.15, 0.85)
 	for key in visuals.keys():
 		if not present.has(key):
 			visuals[key].queue_free()
@@ -858,8 +880,15 @@ func _make_visual(kind: String, data: Dictionary) -> Node3D:
 		"trails":
 			_decal(root, "smoke_01", 1.05, Color(data.color, 0.7), 0.025 + (int(data.id) % 8) * 0.001)
 		"shots":
-			var shot = _decal(root, "spark_01", 0.5, data.color, 1)
-			shot.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			# Reuse Kenney's licensed sprites: colored halo, bright core, trailing dots.
+			var halo = _decal(root, "circle_01" if data.enemy else "smoke_01", 0.85, data.color, 0.8)
+			halo.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			var core = _decal(root, "smoke_01", 0.32, Color.WHITE, 0.8)
+			core.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			for i in 3:
+				var tail = _decal(root, "smoke_01", 0.28 - i * 0.06, Color(data.color, 0.7 - i * 0.18), 0.8)
+				tail.position -= data.velocity.normalized() * (0.4 + i * 0.35)
+				tail.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		"pickups":
 			_asset(root, "kenney/column.glb", Vector3.ZERO, Vector3(1.2, 0.5, 1.2))
 			_asset(root, "kenney/potion.glb", Vector3(0, 0.6, 0), Vector3(0.7, 0.9, 0.7)).name = "Crystal"
@@ -890,7 +919,7 @@ func _award_xp(amount: int, claim: String) -> void:
 			var maximum = _member_health() * body.members.size()
 			body.health = minf(maximum, body.health + maximum - body.max_health)
 			body.max_health = maximum
-		_message("PARTY LEVEL %d · +10 health per slime, +12%% fusion damage per level" % party_level)
+		_message("PARTY LEVEL %d · +10 health, +12%% damage · %d power slots per slime" % [party_level, _power_capacity()])
 
 func _sample_remote_position(kind: String, data: Dictionary) -> Vector3:
 	if is_host or not kind in ["bodies", "enemies"] or snapshot_frames.size() < 2:
@@ -913,3 +942,16 @@ func _sample_remote_position(kind: String, data: Dictionary) -> Vector3:
 func camera_anchor(body: Dictionary) -> Vector3:
 	var visual = visuals.get("bodies" + str(body.id))
 	return visual.position if is_instance_valid(visual) else body.position
+
+func _power_capacity() -> int:
+	return 1 + floori(party_level / 3.0)
+
+func _carried_powers(player: Dictionary) -> Array:
+	# Accept legacy single-power fixtures as well as the multi-slot inventory.
+	return player.elements if not player.elements.is_empty() else ([player.element] if player.element != "" else [])
+
+func _launch_jump(body: Dictionary) -> void:
+	body.vertical_speed = 4.5 if body.jump_cut else 10.5
+	body.jump_buffer = 0.0
+	body.coyote = 0.0
+	body.position.y += 0.06

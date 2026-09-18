@@ -1,4 +1,4 @@
-# Slimebound — build 0.6: The Wilds
+# Slimebound — build 0.7: The Wilds
 
 A Godot 4.3+ third-person co-op exploration prototype. Follow an outdoor trail from a campsite, through pine groves and uphill ridges, to the Moss Warden's summit. Slimes split to explore and gather powers, then fuse to fight.
 
@@ -10,7 +10,7 @@ This is a **bounded outdoor level**, not a finished open-world game or a PEAK cl
 
 1. Download the latest repository ZIP and extract it into a **fresh folder**.
 2. Import `project.godot` in Godot 4.3 or newer. Allow the bundled GLB models to import.
-3. Press F5. Confirm the menu says **BUILD 0.6 · THE WILDS · THIRD-PERSON CO-OP**.
+3. Press F5. Confirm the menu says **BUILD 0.7 · THE WILDS · THIRD-PERSON CO-OP**.
 4. Select **PLAY LOCAL DUNGEON — NO IP REQUIRED** for two players on one keyboard. This familiar button now starts the outdoor expedition.
 
 ## Camera and local controls
@@ -51,9 +51,9 @@ Defeat reforms the team at its latest active landmark, retaining powers and rese
 
 ## Slime abilities
 
-Solo slimes cannot damage enemies. Moving on the ground leaves a seven-second trail: ordinary enemies move 55% slower on it, and the Warden moves 30% slower. Solo slimes move faster and carry one power. Collecting another replaces it; pickups replenish after one second.
+Solo slimes cannot damage enemies. Moving on the ground leaves a seven-second trail: ordinary enemies move 55% slower on it, and the Warden moves 30% slower. Solo slimes move faster and start with one power slot. Extra slots unlock at levels 3, 6 and 9. Collecting powers fills empty slots, then replaces the oldest carried power when full; pickups replenish after one second.
 
-Fusion uses an existing animated limbed creature model, enables melee strikes and activates equipped powers. Splitting retains each player's power and health percentage; it does not heal them.
+Fusion uses an existing animated green slime model with small arms, enables melee strikes and activates equipped powers. Splitting retains each player's power and health percentage; it does not heal them.
 
 | Equipped powers | Fused effect |
 | --- | --- |
@@ -76,7 +76,7 @@ Host/Join supports up to six players on UDP **7777**. Internet play may need por
 
 All model and effect art is bundled CC0 work by Kenney and Quaternius. The outdoor environment uses **Kenney Nature Kit**. Layout, asset transforms, engine material palette/roughness adjustments, standard sky, fog and lighting are configured in code. No custom artwork meshes or textures were created.
 
-The fused form remains Quaternius's stock **Yeti**, used as a limbed stand-in—not a bespoke humanoid slime. The Warden uses **Mushroom King**. See [ASSET_CREDITS.md](ASSET_CREDITS.md) and the included license files.
+The fused form uses Quaternius’s CC0 **Slime**, with small arms and existing animations, enlarged in-game. The Warden uses **Mushroom King**. See [ASSET_CREDITS.md](ASSET_CREDITS.md) and the included license files.
 
 ## Developer checks
 
@@ -98,3 +98,11 @@ The party shares XP: crawlers grant 25, brutes 45, the boss 250, new landmarks 4
 Levels survive defeat and splitting/fusion. R starts a fresh expedition at level 1; there is no saved progression between sessions.
 
 Additional regression test: `godot --headless --path . --script res://tests/movement_level_test.gd`.
+
+## Power slots, jump feel and projectiles (build 0.7)
+
+Each slime has 1/2/3/4 power slots at party levels 1/3/6/9. Collect while solo to fill them; when full, the oldest power is replaced. Duplicates stack, and fusion pools every member’s slots. Splitting or defeat retains inventories. The roster shows each slime’s powers and slot usage. A new expedition clears them.
+
+Jump with Space / Enter. Hold for the full jump, release early for a short hop. Jump input is buffered for 140 ms before landing, with 100 ms of coyote time after leaving ground. Falling is faster than rising; existing models stretch in the air and squash briefly on landing. Either fused player can jump or shorten the shared jump.
+
+Projectiles have larger colored silhouettes, white centers and directional sprite trails; hostile shots have red rings. Impact flashes mark hits. All effects reuse the bundled Kenney particle artwork. Shots remain ground-following spells, not vertically aimed projectiles.

@@ -7,7 +7,9 @@ func run() -> void:
 	root.add_child(game)
 	if "--server" in OS.get_cmdline_user_args():
 		game._host_game()
-		game.world._award_xp(100, "network_test")
+		game.world._award_xp(250, "network_test")
+		game.world.players[1].elements = ["Ember", "Storm"]
+		game.world.players[1].element = "Ember + Storm"
 		await create_timer(4).timeout
 		if game.world.players.size() != 2:
 			push_error("Server did not register client")
@@ -22,7 +24,7 @@ func run() -> void:
 			push_error("Client did not receive authoritative state")
 			quit(1)
 			return
-		if game.world.state.party_level != 2:
+		if game.world.state.party_level != 3 or game.world.state.players[0].elements.size() != 2 or game.world.state.players[0].capacity != 2:
 			push_error("Shared level was not replicated")
 			quit(1)
 			return

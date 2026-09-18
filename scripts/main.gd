@@ -124,7 +124,7 @@ func _build_interface() -> void:
 	var controls := _label("Solo: leave slowing trails · Collect powers · Fuse to fight", 12, Color("ffd66d"))
 	controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(controls)
-	var build_label := _label("BUILD 0.6 · THE WILDS · THIRD-PERSON CO-OP", 10, Color("60736d"))
+	var build_label := _label("BUILD 0.7 · THE WILDS · THIRD-PERSON CO-OP", 10, Color("60736d"))
 	build_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(build_label)
 
@@ -315,7 +315,7 @@ func _update_roster(roster: Array) -> void:
 		dot.color = entry.color
 		dot.custom_minimum_size = Vector2(9, 9)
 		row.add_child(dot)
-		var player_name := _label("%s  %d HP\n%s" % [entry.name, entry.health, entry.element if entry.element != "" else "No power"], 12, Color("e8f2ed"))
+		var player_name := _label("%s  %d HP\n%s" % [entry.name, entry.health, (" + ".join(entry.elements) if not entry.elements.is_empty() else "No power") + " [%d/%d]" % [entry.elements.size(), entry.capacity]], 12, Color("e8f2ed"))
 		player_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(player_name)
 		row.add_child(_label("◆ %d" % entry.score, 12, Color("ffd66d")))

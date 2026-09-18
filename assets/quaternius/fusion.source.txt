@@ -1,4 +1,5 @@
-Quaternius — Ultimate Monsters
-https://poly.pizza/m/ceRHrn8HHE
-https://static.poly.pizza/40a831b3-686a-4af8-b189-a13b38a3c26a.glb
-License: CC0 1.0 https://creativecommons.org/publicdomain/zero/1.0/
+Slime by Quaternius
+Source: https://poly.pizza/m/LyjSUKHKnh
+License: CC0 1.0 (Public Domain)
+Download: https://static.poly.pizza/195565b4-842a-44e9-a59a-5ebb1d133255.glb
+Original model and animations; uniformly enlarged in Godot for fusion.
