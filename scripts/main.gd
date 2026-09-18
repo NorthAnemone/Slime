@@ -121,10 +121,10 @@ func _build_interface() -> void:
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(status_label)
 
-	var controls := _label("Solo: leave slowing trails · Collect powers · Fuse to fight", 12, Color("ffd66d"))
+	var controls := _label("Solo: leave elemental trails · Collect powers · Fuse for full strength", 12, Color("ffd66d"))
 	controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(controls)
-	var build_label := _label("BUILD 0.7 · THE WILDS · THIRD-PERSON CO-OP", 10, Color("60736d"))
+	var build_label := _label("BUILD 0.8 · THE WILDS · THIRD-PERSON CO-OP", 10, Color("60736d"))
 	build_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(build_label)
 
@@ -203,8 +203,8 @@ func _build_hud() -> void:
 
 	help_label = _pill("E fuse · Q split · F collect · Click fight (fused only) · Esc menu", Color("d8e8df"))
 	help_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	help_label.position = Vector2(-680, -54)
-	help_label.size = Vector2(658, 42)
+	help_label.position = Vector2(-680, -72)
+	help_label.size = Vector2(658, 60)
 	help_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	game_hud.add_child(help_label)
 
@@ -238,7 +238,7 @@ func _local_game() -> void:
 	if player_name.is_empty():
 		player_name = "Gloob"
 	world.setup_local_coop(player_name, "Arrow Slime")
-	help_label.text = "P1 WASD · Mouse/Click · Space jump · Shift sprint · E/Q · F collect\nP2 Arrows · U/O look · M fight · Enter jump · Ctrl sprint · N/B · L collect"
+	help_label.text = "P1 WASD · Mouse look · Wheel zoom · Space jump · Shift sprint · E/Q · F collect\nP2 Arrows · U/O turn · I/K tilt · M fight · Enter jump · Ctrl sprint · N/B · L collect\nCamera: Right-click capture · Tab cursor · Home reset · T/G P1 tilt · [ / ] P2 zoom"
 	_show_toast("Local Dungeon ready: no server or IP required")
 
 
@@ -261,7 +261,7 @@ func _on_connected_to_server() -> void:
 
 func _enter_game(hosting: bool) -> void:
 	_create_world()
-	help_label.text = "WASD · Mouse/Click · Space jump · Shift sprint · E/Q fuse/split · F collect"
+	help_label.text = "WASD · Mouse look · Wheel zoom · Space jump · Shift sprint · E/Q fuse/split · F collect"
 	var player_name := name_input.text.strip_edges()
 	if player_name.is_empty():
 		player_name = "Gloob"

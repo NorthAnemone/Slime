@@ -6,12 +6,13 @@ signal roster_changed(roster: Array)
 signal encounter_changed(info: Dictionary)
 
 const COLORS = [Color("#72ef9b"), Color("#65d5ff"), Color("#ff8fd8"), Color("#ffd66d"), Color("#b79cff"), Color("#ff9875")]
-const ELEMENTS = {"Ember": Color("#ff9454"), "Frost": Color("#75e1ff"), "Storm": Color("#c5a1ff")}
-const terrain = preload("res://scripts/outdoor_level.gd")
+const ELEMENTS = {"Ember": Color("#ff9454"), "Frost": Color("#75e1ff"), "Storm": Color("#c5a1ff"), "Venom": Color("#a6e34b"), "Gale": Color("#e4ffff")}
+var terrain = preload("res://scripts/outdoor_level.gd")
 const CameraRig = preload("res://scripts/exploration_camera.gd")
-const ROOMS = ["TRAILHEAD", "WHISPERING GROVE", "SUNLIT RIDGE", "WARDEN SUMMIT"]
+var ROOMS = ["TRAILHEAD", "WHISPERING GROVE", "SUNLIT RIDGE", "WARDEN SUMMIT"]
 const CENTERS = [48.0, 12.0, -28.0, -68.0]
-const PORTAL = Vector3(0, 8.4, -89)
+var PORTAL = Vector3(0, 8.4, -89)
+var map_index = 0
 var camera_rig: Node
 var cleared = [true, false, false, false]
 var party_level = 1
@@ -80,16 +81,17 @@ func setup_local_coop(first_name: String, second_name: String) -> void:
 
 func _start() -> void:
 	for room in 4:
-		for i in 3:
-			var key = ELEMENTS.keys()[i]
+		var available = ["Ember", "Frost", "Storm"] if map_index == 0 else ELEMENTS.keys()
+		for i in available.size():
+			var key = available[i]
 			var id = _id()
-			pickups[id] = {"id": id, "position": terrain.ground(terrain.LANDMARKS[room] + Vector3(-5 + i * 5, 0, 5)),
+			pickups[id] = {"id": id, "position": terrain.ground(terrain.LANDMARKS[room] + Vector3((i - (available.size() - 1) / 2.0) * 3, 0, 5)),
 				"element": key, "ready": 0.0, "room": room}
 	for i in 3:
 		var id = _id()
 		var cache_pos = [Vector3(-34, 0, 30), Vector3(36, 0, -3), Vector3(-30, 0, -48)][i]
 		pickups[id] = {"id": id, "position": terrain.ground(cache_pos),
-			"element": ELEMENTS.keys()[i], "ready": 0.0, "room": -1}
+			"element": (["Ember", "Frost", "Storm"] if map_index == 0 else ["Venom", "Gale", "Venom"])[i], "ready": 0.0, "room": -1}
 
 func _id() -> int:
 	var id = next_id
@@ -158,6 +160,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.is_action_released("jump" if index == 0 else "p2_jump"):
 			if is_host: _action(local_peer_id if index == 0 else 2, "jump_release")
 			else: action.rpc_id(1, "jump_release")
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F8:
+		if is_host: _next_map()
 	if is_host and event.is_action_pressed("restart_run"):
 		_restart()
 
@@ -191,9 +195,9 @@ func _action(peer_id: int, kind: String) -> void:
 					if p.elements.size() >= _power_capacity(): p.elements.pop_front()
 					p.elements.append(item.element)
 					p.element = " + ".join(p.elements)
-					if item.room == -1: _award_xp(35, "cache:%d" % item.id)
+					if item.room == -1: _award_xp(35, "map%d:cache:%d" % [map_index, item.id])
 					item.ready = clock + 1.0
-					_message("%s absorbed %s. Fuse to activate it!" % [p.name, p.element])
+					_message("%s absorbed %s. Trail empowered; fuse for full strength!" % [p.name, p.element])
 					break
 
 func _set_input(peer_id: int, move: Vector2, aim: Vector2, attack: bool, sprint: bool = false) -> void:
@@ -268,8 +272,13 @@ func _simulate(delta: float) -> void:
 		var sprinting = sprinting_members > 0 and move.length_squared() > 0.01
 		body.sprinting = sprinting
 		var speed = (9.0 if body.members.size() == 1 else 7.6) * (1.7 if sprinting else 1.0)
+		var ground_powers = _trail_powers(body.position, body.radius)
+		var boost = minf(0.35, 0.12 * ground_powers.get("Frost", 0) + 0.15 * ground_powers.get("Gale", 0))
+		speed *= 1.0 + boost
 		var desired_velocity = Vector3(move.x, 0, move.y) * speed
 		var acceleration = 80.0 if move.length_squared() < 0.01 else 60.0
+		if ground_powers.get("Frost", 0) > 0:
+			acceleration = 18.0 if move.length_squared() < 0.01 else 28.0
 		body.velocity = body.velocity.move_toward(desired_velocity, acceleration * delta)
 		var before: Vector3 = body.position
 		_move(body, body.velocity * delta)
@@ -290,7 +299,14 @@ func _simulate(delta: float) -> void:
 		if body.members.size() == 1 and clock >= body.next_trail and move.length() > 0.1 and body.position.y < floor_y + 0.1:
 			body.next_trail = clock + 0.18
 			var id = _id()
-			trails[id] = {"id": id, "position": body.position, "color": body.color, "expires": clock + 7.0}
+			var powers = _powers(body)
+			var tint = body.color
+			if not powers.is_empty():
+				tint = Color.BLACK
+				for element in powers: tint += ELEMENTS[element]
+				tint /= float(powers.size())
+				tint.a = 1
+			trails[id] = {"id": id, "position": body.position, "color": tint, "powers": powers, "expires": clock + 7.0}
 	while trails.size() > 180:
 		trails.erase(trails.keys()[0])
 	for id in trails.keys():
@@ -312,9 +328,16 @@ func _powers(body: Dictionary) -> Dictionary:
 func _power_name(body: Dictionary) -> String:
 	var p = _powers(body)
 	if body.members.size() == 1:
-		return "SOLO · %s dormant · slowing trail" % ("no power" if p.is_empty() else " + ".join(p.keys()))
+		return "SOLO · %s trail" % ("slowing" if p.is_empty() else " + ".join(p.keys()))
 	if p.size() >= 3:
-		return "TEMPEST · burn + frost + chain"
+		return "TEMPEST · burn + frost + chain" if not p.has("Venom") and not p.has("Gale") else "PRISM SURGE · " + " + ".join(p.keys())
+	if p.has("Venom") and p.has("Gale"): return "TOXIC CYCLONE · poison cloud + knockback"
+	if p.has("Venom") and p.has("Ember"): return "VOLATILE VENOM · poison + ignition burst"
+	if p.has("Venom") and p.has("Frost"): return "DEEP CHILL · prolonged poison + slow"
+	if p.has("Venom") and p.has("Storm"): return "PLAGUE ARC · poison-spreading lightning"
+	if p.has("Gale") and p.has("Ember"): return "FIRESTORM · burning gust"
+	if p.has("Gale") and p.has("Frost"): return "SQUALL · freezing gust"
+	if p.has("Gale") and p.has("Storm"): return "THUNDERCLAP · shocking gust"
 	if p.has("Ember") and p.has("Frost"):
 		return "FROSTFIRE · burning, slowing splash"
 	if p.has("Ember") and p.has("Storm"):
@@ -348,9 +371,34 @@ func _hit(enemy_id: int, damage: float, powers: Dictionary) -> void:
 	var ember = powers.get("Ember", 0)
 	var frost = powers.get("Frost", 0)
 	var storm = powers.get("Storm", 0)
+	var venom = powers.get("Venom", 0)
+	var gale = powers.get("Gale", 0)
 	# Elemental damage scales exactly linearly with matching carried powers.
-	enemy.health -= (damage + 8 * (ember + frost + storm)) * level_multiplier
+	enemy.health -= (damage + 8 * (ember + frost + storm + venom + gale)) * level_multiplier
 	enemy.flash = clock + 0.1
+	if venom > 0:
+		enemy.poison_until = clock + (6.0 if frost > 0 else 4.0)
+		enemy.poison_damage = 5.0 * venom * level_multiplier
+		if ember > 0: enemy.health -= 12.0 * venom * level_multiplier
+	if gale > 0:
+		var source = _nearest(enemy.position, bodies)
+		var direction = Vector3.FORWARD if source.is_empty() else (enemy.position - source.position).normalized()
+		var origin = enemy.position
+		_gust(enemy, direction, gale)
+		if powers.size() > 1:
+			_effect(origin, 4, ELEMENTS.Gale, 0.25)
+			for other in enemies.values():
+				if other.id == enemy_id or other.position.distance_to(origin) > 4: continue
+				other.health -= 8.0 * gale * level_multiplier
+				_gust(other, (other.position - origin).normalized(), gale)
+				if venom > 0:
+					other.poison_until = clock + 4
+					other.poison_damage = 5.0 * venom * level_multiplier
+				if ember > 0:
+					other.burn_until = clock + 3
+					other.burn_damage = 6.0 * ember * level_multiplier
+				if frost > 0: other.frost_until = clock + 2.0 * frost
+				if storm > 0: other.health -= 10.0 * storm * level_multiplier
 	if ember > 0:
 		enemy.burn_until = clock + 3
 		enemy.burn_damage = 6.0 * ember * level_multiplier
@@ -362,6 +410,9 @@ func _hit(enemy_id: int, damage: float, powers: Dictionary) -> void:
 			if other.id != enemy_id and _distance(enemy, other) < 7 and remaining > 0:
 				other.health -= 14.0 * storm * level_multiplier
 				other.flash = clock + 0.2
+				if venom > 0:
+					other.poison_until = clock + 4
+					other.poison_damage = 5.0 * venom * level_multiplier
 				if frost > 0:
 					other.frost_until = clock + 2.0 * frost
 				if ember > 0:
@@ -444,10 +495,10 @@ func _split(body: Dictionary) -> void:
 func _spawn_enemy(pos: Vector3, kind: String, reward_key: String = "") -> int:
 	pos = terrain.ground(pos)
 	var id = _id()
-	var hp = 1400.0 if kind == "boss" else (110.0 if kind == "brute" else 65.0)
+	var hp = (1400.0 if kind == "boss" else (110.0 if kind == "brute" else 65.0)) * (1.4 if map_index == 1 else 1.0)
 	enemies[id] = {"id": id, "position": pos, "kind": kind, "radius": 2.1 if kind == "boss" else 0.8,
 		"health": hp, "max_health": hp, "reward_key": reward_key, "attack_at": clock + 2.0, "flash": 0.0,
-		"burn_until": 0.0, "burn_damage": 0.0, "frost_until": 0.0, "slow": false, "enraged": false}
+		"trail_shock_at": 0.0, "poison_until": 0.0, "poison_damage": 0.0, "burn_until": 0.0, "burn_damage": 0.0, "frost_until": 0.0, "slow": false, "enraged": false}
 	return id
 
 func _update_enemies(delta: float) -> void:
@@ -455,8 +506,10 @@ func _update_enemies(delta: float) -> void:
 		if not enemies.has(id):
 			continue
 		var e = enemies[id]
+		_apply_trail_effects(e, delta)
 		if e.burn_until > clock:
 			e.health -= e.burn_damage * delta
+		if e.poison_until > clock: e.health -= e.poison_damage * delta
 		if e.health <= 0:
 			if e.reward_key != "": _award_xp(250 if e.kind == "boss" else (45 if e.kind == "brute" else 25), e.reward_key)
 			enemies.erase(id)
@@ -467,14 +520,14 @@ func _update_enemies(delta: float) -> void:
 				enemies.clear()
 				hazards.clear()
 				shots.clear()
-				_message("The Moss Warden falls! Reach the heart gate together.")
+				_message("The Warden falls! Reach the heart gate together.")
 			continue
 		var target = _nearest(e.position, bodies)
 		if target.is_empty():
 			continue
 		var slow = 1.0
 		for trail in trails.values():
-			if _distance(e, trail) < e.radius + 0.85:
+			if trail.expires > clock and _distance(e, trail) < e.radius + 0.85:
 				slow = 0.7 if e.kind == "boss" else 0.45
 				break
 		if e.frost_until > clock:
@@ -573,6 +626,10 @@ func _reset_party() -> void:
 		i += 1
 
 func _restart() -> void:
+	if map_index != 0:
+		_load_map(0)
+		pickups.clear()
+		_start()
 	party_level = 1
 	party_xp = 0
 	xp_claims.clear()
@@ -595,9 +652,9 @@ func _start_encounter() -> void:
 	if stage in [1, 2]:
 		for i in (4 if stage == 1 else 6):
 			_spawn_enemy(terrain.LANDMARKS[stage] + Vector3(-7 + (i % 3) * 7, 0, -3 - (i / 3) * 3),
-				"brute" if stage == 2 and i % 2 == 0 else "crawler", "encounter:%d:%d" % [stage, i])
+				"brute" if stage == 2 and i % 2 == 0 else "crawler", "map%d:encounter:%d:%d" % [map_index, stage, i])
 	elif stage == 3:
-		boss_id = _spawn_enemy(terrain.LANDMARKS[3], "boss", "warden")
+		boss_id = _spawn_enemy(terrain.LANDMARKS[3], "boss", "map%d:warden" % map_index)
 
 func _progress() -> void:
 	if enemies.is_empty(): cleared[stage] = true
@@ -605,7 +662,7 @@ func _progress() -> void:
 		for body in bodies.values():
 			if body.members.size() >= 2 and body.position.distance_to(terrain.LANDMARKS[stage + 1]) < 11:
 				stage += 1
-				_award_xp(40, "landmark:%d" % stage)
+				_award_xp(40, "map%d:landmark:%d" % [map_index, stage])
 				_start_encounter()
 				_message(ROOMS[stage] + " · defend the landmark together!")
 				return
@@ -613,7 +670,7 @@ func _progress() -> void:
 		for body in bodies.values():
 			if body.members.size() >= 2 and body.position.distance_to(PORTAL) < 4:
 				complete = true
-				_message("SUMMIT REACHED! Press R for another expedition.")
+				_message(("SUMMIT REACHED! Host: F8 to enter Amber Ruins." if map_index == 0 else "AMBER RUINS CLEARED! Press R for a new expedition."))
 				break
 
 func _leave(peer_id: int) -> void:
@@ -674,11 +731,12 @@ func _snapshot() -> Dictionary:
 		for id in b.members:
 			copy.offering = copy.offering or players[id].offer > clock
 		body_array.append(copy)
-	return {"clock": clock, "party_level": party_level, "party_xp": party_xp, "xp_needed": _xp_needed(), "stage": stage, "cleared": cleared, "victory": victory, "complete": complete, "players": roster,
+	return {"clock": clock, "map_index": map_index, "party_level": party_level, "party_xp": party_xp, "xp_needed": _xp_needed(), "stage": stage, "cleared": cleared, "victory": victory, "complete": complete, "players": roster,
 		"bodies": body_array, "enemies": enemies.values().duplicate(true), "trails": trails.values().duplicate(true),
 		"pickups": pickups.values().duplicate(true), "shots": shots.values().duplicate(true), "hazards": hazards.values().duplicate(true)}
 
 func _apply(data: Dictionary) -> void:
+	if data.get("map_index", 0) != map_index: _load_map(data.map_index)
 	state = data
 	var body = _local_body()
 	if not body.is_empty():
@@ -696,10 +754,10 @@ func _apply(data: Dictionary) -> void:
 	elif not data.enemies.is_empty():
 		objective = "Defend this landmark · %d enemies remain." % data.enemies.size()
 	if data.stage == 3 and not data.victory:
-		objective = "Moss Warden · dodge red warnings; jump to evade ground slams."
+		objective = ("Moss Warden" if map_index == 0 else "Amber Warden") + " · dodge red warnings; jump to evade ground slams."
 	if data.victory: objective = "Reach the summit arch together."
-	if data.complete: objective = "EXPEDITION COMPLETE · R: replay · Esc: menu"
-	encounter_changed.emit({"title": ROOMS[data.stage], "objective": objective, "boss_health": boss_health,
+	if data.complete: objective = ("MAP CLEAR · F8: enter Amber Ruins · R: restart" if map_index == 0 else "BOTH MAPS CLEARED · R: restart expedition")
+	encounter_changed.emit({"title": ("THE WILDS · " if map_index == 0 else "AMBER RUINS · ") + ROOMS[data.stage], "objective": objective, "boss_health": boss_health,
 		"boss_max": boss_max, "power": body.get("power_name", ""), "complete": data.complete, "party_level": data.party_level, "party_xp": data.party_xp, "xp_needed": data.xp_needed})
 
 func _local_body() -> Dictionary:
@@ -736,13 +794,17 @@ func _style_asset(node: Node, nature: bool) -> void:
 		for i in node.mesh.get_surface_count():
 			var original = node.mesh.surface_get_material(i)
 			if original is StandardMaterial3D:
-				var key = str(original.get_instance_id()) + str(nature)
+				var key = str(original.get_instance_id()) + str(nature) + str(map_index)
 				if not surface_cache.has(key):
 					var mat = original.duplicate()
 					mat.metallic = 0
 					mat.roughness = 0.95
 					if nature and palette.has(original.resource_name):
 						mat.albedo_color = palette[original.resource_name]
+					if map_index == 1 and nature:
+						if original.resource_name == "grass": mat.albedo_color = Color("b7a078")
+						if original.resource_name == "dirt": mat.albedo_color = Color("9e754e")
+						if original.resource_name == "stone": mat.albedo_color = Color("ad8964")
 					surface_cache[key] = mat
 				node.set_surface_override_material(i, surface_cache[key])
 	for child in node.get_children(): _style_asset(child, nature)
@@ -846,7 +908,7 @@ func _render_entities(delta: float) -> void:
 					visual.get_node("Model").scale = visual.get_node("Model").scale.lerp(stretch, 1 - exp(-delta * 22))
 					_animate(visual, "Punch" if fused and data.swing > state.clock else ("Walk" if moving else "Idle"))
 				"enemies":
-					visual.get_node("Name").text = "SLOWED" if data.slow else ""
+					visual.get_node("Name").text = "POISONED" if data.poison_until > state.clock else ("SLOWED" if data.slow else "")
 					_animate(visual, "Walk" if moving else "Idle")
 				"pickups":
 					visual.visible = data.ready <= state.clock
@@ -870,7 +932,7 @@ func _make_visual(kind: String, data: Dictionary) -> Node3D:
 			var model = "slime" if is_body else "crawler"
 			if fused: model = "fusion"
 			if boss or (not is_body and data.kind == "brute"): model = "warden"
-			var height = 3.2 if fused else (5.0 if boss else 1.4)
+			var height = 1.85 if fused else (5.0 if boss else 1.4)
 			_asset(root, "quaternius/" + model + ".glb", Vector3.ZERO, Vector3(data.radius * 2, height, data.radius * 2)).name = "Model"
 			_label3d(root, Vector3(0, height + 0.4, 0), "").name = "Name"
 			if is_body:
@@ -955,3 +1017,68 @@ func _launch_jump(body: Dictionary) -> void:
 	body.jump_buffer = 0.0
 	body.coyote = 0.0
 	body.position.y += 0.06
+
+func _load_map(index: int) -> void:
+	map_index = index
+	terrain = preload("res://scripts/outdoor_level.gd") if index == 0 else preload("res://scripts/ruins_level.gd")
+	ROOMS = ["TRAILHEAD", "WHISPERING GROVE", "SUNLIT RIDGE", "WARDEN SUMMIT"] if index == 0 else ["CARAVAN CAMP", "BROKEN COURT", "PILLAR PASS", "AMBER SANCTUM"]
+	PORTAL = terrain.EXIT
+	for child in $GeneratedGeometry.get_children():
+		$GeneratedGeometry.remove_child(child)
+		child.queue_free()
+	if is_instance_valid(aim_marker): aim_marker.queue_free()
+	for visual in visuals.values(): visual.queue_free()
+	visuals.clear()
+	walls.clear()
+	snapshot_frames.clear()
+	_build_level()
+
+func _next_map() -> void:
+	if not is_host or not complete or map_index != 0: return
+	_load_map(1)
+	stage = 0
+	victory = false
+	complete = false
+	cleared = [true, false, false, false]
+	pickups.clear()
+	enemies.clear()
+	_start()
+	_reset_party()
+	_start_encounter()
+	_apply(_snapshot())
+	_message("AMBER RUINS · your levels and powers carried over. Find the broken court!")
+
+func _gust(enemy: Dictionary, direction: Vector3, stacks: int) -> void:
+	# Small collision-checked steps prevent gusts from pushing through columns.
+	var amount = minf(4.0, 1.4 * stacks) * (0.2 if enemy.kind == "boss" else 1.0)
+	for i in 12: _move(enemy, direction * amount / 12.0)
+
+func _trail_powers(pos: Vector3, radius: float) -> Dictionary:
+	var powers = {}
+	for trail in trails.values():
+		if trail.expires <= clock or absf(pos.y - trail.position.y) > 0.45: continue
+		if Vector2(pos.x-trail.position.x, pos.z-trail.position.z).length() > radius + 0.85: continue
+		# Use the strongest patch for each element, never the number of patches.
+		for element in trail.get("powers", {}):
+			powers[element] = maxi(powers.get(element, 0), mini(4, trail.powers[element]))
+	return powers
+
+func _apply_trail_effects(enemy: Dictionary, delta: float) -> void:
+	var powers = _trail_powers(enemy.position, enemy.radius)
+	if powers.is_empty(): return
+	enemy.health -= 3.0 * powers.get("Ember", 0) * delta
+	if powers.get("Venom", 0) > 0:
+		# Trail poison must not overwrite a stronger fused spell's poison.
+		if enemy.poison_until <= clock: enemy.poison_damage = 0
+		enemy.poison_damage = maxf(enemy.poison_damage, 1.5 * powers.Venom)
+		enemy.poison_until = maxf(enemy.poison_until, clock + 1.5)
+	if powers.get("Storm", 0) > 0 and clock >= enemy.trail_shock_at:
+		enemy.health -= 2.0 * powers.Storm
+		enemy.trail_shock_at = clock + 0.8
+		enemy.flash = clock + 0.1
+		_effect(enemy.position, 0.6, ELEMENTS.Storm, 0.12)
+	if powers.get("Gale", 0) > 0:
+		var source = _nearest(enemy.position, bodies)
+		if not source.is_empty():
+			var direction = (enemy.position-source.position).normalized()
+			_move(enemy, direction * minf(1.2, 0.45 * powers.Gale) * delta * (0.2 if enemy.kind == "boss" else 1.0))

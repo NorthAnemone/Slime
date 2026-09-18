@@ -1,6 +1,6 @@
-# Slimebound — build 0.7: The Wilds
+# Slimebound — build 0.8: The Wilds
 
-A Godot 4.3+ third-person co-op exploration prototype. Follow an outdoor trail from a campsite, through pine groves and uphill ridges, to the Moss Warden's summit. Slimes split to explore and gather powers, then fuse to fight.
+A Godot 4.3+ third-person co-op exploration prototype with two connected maps. Follow an outdoor trail from a campsite, through pine groves and uphill ridges, to the Moss Warden's summit. Slimes split to explore and gather powers, then fuse to fight.
 
 ![Actual Godot capture of the third-person summit encounter](docs/screenshots/wilds.png)
 
@@ -10,7 +10,7 @@ This is a **bounded outdoor level**, not a finished open-world game or a PEAK cl
 
 1. Download the latest repository ZIP and extract it into a **fresh folder**.
 2. Import `project.godot` in Godot 4.3 or newer. Allow the bundled GLB models to import.
-3. Press F5. Confirm the menu says **BUILD 0.7 · THE WILDS · THIRD-PERSON CO-OP**.
+3. Press F5. Confirm the menu says **BUILD 0.8 · THE WILDS · THIRD-PERSON CO-OP**.
 4. Select **PLAY LOCAL DUNGEON — NO IP REQUIRED** for two players on one keyboard. This familiar button now starts the outdoor expedition.
 
 ## Camera and local controls
@@ -20,7 +20,10 @@ The camera stays **third-person in every form**. Separate local slimes each get 
 | Action | Player 1 | Player 2 |
 | --- | --- | --- |
 | Move | WASD | Arrow keys |
-| Orbit camera | Mouse | U / O |
+| Orbit camera | Mouse (right-click to capture) | U / O |
+| Tilt camera | Mouse up/down, or T / G | I / K |
+| Zoom | Mouse wheel | [ / ] |
+| Reset both cameras | Home | Home |
 | Jump | Space | Enter |
 | Hold sprint | Shift | Ctrl |
 | Attack, fused only | Left mouse | M (nearby enemy auto-aim) |
@@ -51,7 +54,7 @@ Defeat reforms the team at its latest active landmark, retaining powers and rese
 
 ## Slime abilities
 
-Solo slimes cannot damage enemies. Moving on the ground leaves a seven-second trail: ordinary enemies move 55% slower on it, and the Warden moves 30% slower. Solo slimes move faster and start with one power slot. Extra slots unlock at levels 3, 6 and 9. Collecting powers fills empty slots, then replaces the oldest carried power when full; pickups replenish after one second.
+Solo slimes cannot attack directly, but equipped powers add minor trail effects. Moving on the ground leaves a seven-second trail: ordinary enemies move 55% slower on it, and the Warden moves 30% slower. Solo slimes move faster and start with one power slot. Extra slots unlock at levels 3, 6 and 9. Collecting powers fills empty slots, then replaces the oldest carried power when full; pickups replenish after one second.
 
 Fusion uses an existing animated green slime model with small arms, enables melee strikes and activates equipped powers. Splitting retains each player's power and health percentage; it does not heal them.
 
@@ -106,3 +109,41 @@ Each slime has 1/2/3/4 power slots at party levels 1/3/6/9. Collect while solo t
 Jump with Space / Enter. Hold for the full jump, release early for a short hop. Jump input is buffered for 140 ms before landing, with 100 ms of coyote time after leaving ground. Falling is faster than rising; existing models stretch in the air and squash briefly on landing. Either fused player can jump or shorten the shared jump.
 
 Projectiles have larger colored silhouettes, white centers and directional sprite trails; hostile shots have red rings. Impact flashes mark hits. All effects reuse the bundled Kenney particle artwork. Shots remain ground-following spells, not vertically aimed projectiles.
+
+## Amber Ruins and camera update (build 0.8)
+
+The fused slime is now 1.85 m tall instead of 3.2 m. The default camera looks down from a higher angle and supports a wider tilt range. Right-click captures mouse look, Tab releases it, and Home restores the default angle and zoom. Controls above include keyboard tilt and zoom for player two.
+
+Clear the Wilds and enter its exit arch while fused, then the **host presses F8** to travel to Amber Ruins. Levels and carried powers survive travel. R resets the entire expedition to the Wilds. Online clients automatically rebuild the correct map from the host snapshot, including late joiners.
+
+Amber Ruins is a first playable version: a sandy canyon with Caravan Camp, Broken Court, Pillar Pass, Amber Sanctum, two combat encounters, five power pedestals at each landmark, three side caches, and an exit. The Amber Warden currently reuses the first boss’s model and attack patterns with 40% more health, as do other enemies on this map; it is not a new bespoke boss yet. Both maps use the existing licensed models.
+
+### New powers in Amber Ruins
+
+Venom applies poison; Gale knocks enemies back with collision checks (bosses resist most knockback). Duplicate powers increase their effects. Existing powers remain available.
+
+| Fused combination | Effect |
+| --- | --- |
+| Venom + Gale — Toxic Cyclone | Poison spreads through a knockback gust |
+| Venom + Ember — Volatile Venom | Poison, burning, and extra impact damage |
+| Venom + Frost — Deep Chill | Longer poison duration and slowing |
+| Venom + Storm — Plague Arc | Chain lightning spreads poison |
+| Gale + Ember — Firestorm | A gust spreads burning |
+| Gale + Frost — Squall | A gust spreads slowing |
+| Gale + Storm — Thunderclap | A gust deals extra shock damage alongside chaining |
+
+Three or more different elements involving Venom or Gale display as **Prism Surge** and retain their constituent effects.
+
+### Solo elemental trails
+
+| Equipped power | Minor trail effect |
+| --- | --- |
+| Ember | 3 damage per second per stack to touching enemies |
+| Frost | Allies gain 12% speed per stack and lower braking/turning friction |
+| Venom | 1.5 poison damage per second per stack, lingering for 1.5 seconds |
+| Storm | 2 damage per stack every 0.8 seconds |
+| Gale | Allies gain 15% speed per stack; enemies are gently pushed away |
+
+All allied bodies, including fused bodies and the trail’s owner, benefit. Combined speed boosts cap at 35%. Overlapping patches use the strongest stack count for each element, capped at four; more patches do not multiply damage. Empty trails still slow enemies. Trails last seven seconds and are tinted by their carried elements. Jumping out of contact avoids the ground speed/friction effects. Solo trails remain deliberately weaker than fused attacks.
+
+Additional checks: `tests/ruins_camera_test.gd` and `tests/trail_test.gd`. The network test now verifies transition to map two and inventory replication.

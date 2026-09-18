@@ -19,3 +19,5 @@ Kenney's original license files are included in each corresponding folder. Quate
 The fused form uses Quaternius’s CC0 Slime with its existing small arms and idle/walk/attack animations. The original model is uniformly enlarged in-engine; no new character artwork was created.
 
 Build 0.5 uses in-engine palette, roughness and metallic adjustments on these existing models. The landscape is assembled by placing/scaling/rotating the supplied grass, path, rock and tree models. No new artwork meshes or textures were made. The sky, lighting, fog, UI and invisible collision shapes use standard Godot engine facilities. Nature Kit's original license is included in `assets/nature/License.txt`.
+
+Build 0.8 Amber Ruins reuses the bundled Kenney ground, path, cliff, rock, column, arch and campsite models with in-engine sand/stone palette changes. Elemental trails reuse Kenney smoke artwork tinted by equipped elements. No new artwork was created.

@@ -16,6 +16,8 @@ func run() -> void:
 			quit(1)
 			return
 		print("NETWORK HOST PASS: two registered players")
+		game.world.complete = true
+		game.world._next_map()
 		await create_timer(2).timeout
 	else:
 		game._join_game()
@@ -30,11 +32,11 @@ func run() -> void:
 			return
 		game.world.action.rpc_id(1, "fuse")
 		await create_timer(1.5).timeout
-		if game.world._local_body().is_empty() or not game.world._local_body().offering:
-			push_error("Reliable client action was not replicated")
+		if game.world._local_body().is_empty() or game.world.map_index != 1 or game.world.state.pickups.size() != 23:
+			push_error("Map transition was not replicated")
 			quit(1)
 			return
-		print("NETWORK CLIENT PASS: authoritative snapshot and reliable fusion offer")
+		print("NETWORK CLIENT PASS: authoritative snapshot, inventories and second-map transition")
 	game.world.queue_free()
 	await process_frame
 	quit(0)

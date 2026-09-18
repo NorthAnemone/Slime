@@ -35,6 +35,18 @@ func run() -> void:
 	w._attack(w.players[1], w.bodies.values()[0])
 	await create_timer(0.25).timeout
 	await snap("slime-projectile.png")
+	w.complete = true
+	w._next_map()
+	await create_timer(1).timeout
+	await snap("slime-ruins.png")
+	w.stage = 3
+	w._reset_party()
+	w._action(1, "fuse")
+	w._action(2, "fuse")
+	w._check_fusion()
+	w._start_encounter()
+	await create_timer(1).timeout
+	await snap("slime-ruins-boss.png")
 	game.queue_free()
 	await process_frame
 	quit()

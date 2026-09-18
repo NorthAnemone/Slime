@@ -4,12 +4,13 @@ var world: Node3D
 var cameras: Array[Camera3D] = []
 var panes: Array[SubViewportContainer] = []
 var yaw = [0.0, 0.0]
-var pitch = [-0.22, -0.22]
+var pitch = [-0.42, -0.42]
 var distance = [7.0, 7.0]
 var orbit_yaw = [0.0, 0.0]
-var orbit_pitch = [-0.22, -0.22]
+var orbit_pitch = [-0.42, -0.42]
 var eye_height = [1.0, 1.0]
 var boom = [7.0, 7.0]
+var zoom = [0.0, 0.0]
 var split = false
 var layer: CanvasLayer
 var divider: ColorRect
@@ -56,9 +57,17 @@ func _exit_tree() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if event is InputEventMouseMotion and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):
 		yaw[0] -= event.relative.x * 0.003
-		pitch[0] = clampf(pitch[0] - event.relative.y * 0.003, -0.95, 0.12)
+		pitch[0] = clampf(pitch[0] - event.relative.y * 0.003, -1.25, 0.3)
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP: zoom[0] = clampf(zoom[0] - 1, -2, 8)
+		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: zoom[0] = clampf(zoom[0] + 1, -2, 8)
+		if event.button_index == MOUSE_BUTTON_RIGHT: Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_HOME:
+		pitch = [-0.42, -0.42]
+		yaw = [0.0, 0.0]
+		zoom = [0.0, 0.0]
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_TAB:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
 
@@ -81,9 +90,15 @@ func update(delta: float) -> void:
 	if split and not was_split:
 		yaw[1] = yaw[0]
 		orbit_yaw[1] = orbit_yaw[0]
+		pitch[1] = pitch[0]
+		orbit_pitch[1] = orbit_pitch[0]
 	if world.local_coop:
 		var index = 1 if split else 0
 		yaw[index] += (float(Input.is_physical_key_pressed(KEY_U)) - float(Input.is_physical_key_pressed(KEY_O))) * delta * 1.8
+		pitch[index] = clampf(pitch[index] + (float(Input.is_physical_key_pressed(KEY_I)) - float(Input.is_physical_key_pressed(KEY_K))) * delta * 1.3, -1.25, 0.3)
+		zoom[index] = clampf(zoom[index] + (float(Input.is_physical_key_pressed(KEY_BRACKETRIGHT)) - float(Input.is_physical_key_pressed(KEY_BRACKETLEFT))) * delta * 5, -2, 8)
+	# Keyboard fallback also works if an embedded window does not capture the mouse.
+	pitch[0] = clampf(pitch[0] + (float(Input.is_physical_key_pressed(KEY_T)) - float(Input.is_physical_key_pressed(KEY_G))) * delta * 1.3, -1.25, 0.3)
 	var size = get_viewport().get_visible_rect().size
 	panes[0].size = Vector2(size.x * (0.5 if split else 1.0), size.y)
 	panes[1].size = Vector2(size.x * 0.5, size.y)
@@ -101,11 +116,11 @@ func update(delta: float) -> void:
 		var fused = body.members.size() > 1
 		# Position and look target use the same rendered anchor. Never chase a raw
 		# network position with one half of the camera transform.
-		eye_height[i] = lerpf(eye_height[i], 1.65 if fused else 1.0, 1.0 - exp(-delta * 8))
+		eye_height[i] = lerpf(eye_height[i], 1.8 if fused else 1.0, 1.0 - exp(-delta * 8))
 		var target = world.camera_anchor(body) + Vector3(0, eye_height[i], 0)
 		orbit_yaw[i] = lerp_angle(orbit_yaw[i], yaw[i], 1.0 - exp(-delta * 22))
 		orbit_pitch[i] = lerpf(orbit_pitch[i], pitch[i], 1.0 - exp(-delta * 22))
-		distance[i] = lerpf(distance[i], 10.0 + body.members.size() * 0.3 if fused else 7.0, 1.0 - exp(-delta * 4))
+		distance[i] = lerpf(distance[i], (9.0 + body.members.size() * 0.15 if fused else 7.0) + zoom[i], 1.0 - exp(-delta * 4))
 		var offset = Vector3(0, 0, distance[i]).rotated(Vector3.RIGHT, orbit_pitch[i]).rotated(Vector3.UP, orbit_yaw[i])
 		var desired = target + offset
 		desired.y = maxf(desired.y, world.terrain.elevation(desired) + 0.7)
