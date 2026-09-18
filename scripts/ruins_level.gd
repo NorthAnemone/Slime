@@ -40,7 +40,7 @@ static func build(w: Node3D) -> void:
 	rng.seed = 29081
 	for i in 65:
 		var p = ground(Vector3(rng.randf_range(-46,46),0,rng.randf_range(-96,64)))
-		var clear = absf(p.x-trail_x(p.z)) < 10
+		var clear = absf(p.x-trail_x(p.z)) < 10 or (absf(absf(p.x)-24) < 10 and absf(p.z+8) < 10) or (p.x < -18 and p.x > -36 and absf(p.z-36) < 6)
 		for mark in LANDMARKS:
 			if Vector2(p.x-mark.x,p.z-mark.z).length() < 17: clear = true
 		for cache_pos in [Vector3(-34,0,30),Vector3(36,0,-3),Vector3(-30,0,-48)]:

@@ -57,7 +57,7 @@ func _exit_tree() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):
+	if event is InputEventMouseMotion and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or (event.button_mask & MOUSE_BUTTON_MASK_RIGHT) != 0):
 		yaw[0] -= event.relative.x * 0.003
 		pitch[0] = clampf(pitch[0] - event.relative.y * 0.003, -1.25, 0.3)
 	if event is InputEventMouseButton and event.pressed:

@@ -1,4 +1,4 @@
-# Slimebound — build 0.8: The Wilds
+# Slimebound — build 0.9: The Wilds
 
 A Godot 4.3+ third-person co-op exploration prototype with two connected maps. Follow an outdoor trail from a campsite, through pine groves and uphill ridges, to the Moss Warden's summit. Slimes split to explore and gather powers, then fuse to fight.
 
@@ -10,7 +10,7 @@ This is a **bounded outdoor level**, not a finished open-world game or a PEAK cl
 
 1. Download the latest repository ZIP and extract it into a **fresh folder**.
 2. Import `project.godot` in Godot 4.3 or newer. Allow the bundled GLB models to import.
-3. Press F5. Confirm the menu says **BUILD 0.8 · THE WILDS · THIRD-PERSON CO-OP**.
+3. Press F5. Confirm the menu says **BUILD 0.9 · THE WILDS · THIRD-PERSON CO-OP**.
 4. Select **PLAY LOCAL DUNGEON — NO IP REQUIRED** for two players on one keyboard. This familiar button now starts the outdoor expedition.
 
 ## Camera and local controls
@@ -43,7 +43,7 @@ Space now jumps; it no longer attacks. Mouse look aims player 1's ground-followi
 - **Trailhead:** campsite, movement practice and three replenishing power pickups.
 - **Whispering Grove:** follow the winding trail uphill and approach the ruined landmark **while fused** to begin a four-enemy encounter.
 - **Sunlit Ridge:** after clearing the grove, continue to the second landmark and its six-enemy encounter.
-- **Warden Summit:** after the ridge, reach the final clearing to awaken the 1,400-HP Moss Warden. It has telegraphed slams, radial volleys, summoned crawlers and a faster second phase below half health.
+- **Warden Summit:** after the ridge, reach the final clearing to awaken the 1,800-HP Moss Warden. It has telegraphed slams, radial volleys, summoned crawlers and a faster second phase below half health.
 - **Summit arch:** defeat the Warden and enter the arch together to finish.
 
 There are no room gates or transition teleports. You can wander and backtrack throughout the valley, but encounters activate in order and require a fused party. Three extra power caches lie off the trail. Distant mountain meshes are scenery, not additional playable regions.
@@ -116,7 +116,7 @@ The fused slime is now 1.85 m tall instead of 3.2 m. The default camera looks do
 
 Clear the Wilds and enter its exit arch while fused, then the **host presses F8** to travel to Amber Ruins. Levels and carried powers survive travel. R resets the entire expedition to the Wilds. Online clients automatically rebuild the correct map from the host snapshot, including late joiners.
 
-Amber Ruins is a first playable version: a sandy canyon with Caravan Camp, Broken Court, Pillar Pass, Amber Sanctum, two combat encounters, five power pedestals at each landmark, three side caches, and an exit. The Amber Warden currently reuses the first boss’s model and attack patterns with 40% more health, as do other enemies on this map; it is not a new bespoke boss yet. Both maps use the existing licensed models.
+Amber Ruins is a first playable version: a sandy canyon with Caravan Camp, Broken Court, Pillar Pass, Amber Sanctum, two combat encounters, five power pedestals at each landmark, three side caches, and an exit. The Amber Warden currently reuses the first boss’s model and attack patterns with 40% more health (2,520 HP), as do other enemies on this map; it is not a new bespoke boss yet. Both maps use the existing licensed models.
 
 ### New powers in Amber Ruins
 
@@ -147,3 +147,14 @@ Three or more different elements involving Venom or Gale display as **Prism Surg
 All allied bodies, including fused bodies and the trail’s owner, benefit. Combined speed boosts cap at 35%. Overlapping patches use the strongest stack count for each element, capped at four; more patches do not multiply damage. Empty trails still slow enemies. Trails last seven seconds and are tinted by their carried elements. Jumping out of contact avoids the ground speed/friction effects. Solo trails remain deliberately weaker than fused attacks.
 
 Additional checks: `tests/ruins_camera_test.gd` and `tests/trail_test.gd`. The network test now verifies transition to map two and inventory replication.
+
+## Traversal, combat and effects (build 0.9)
+
+- **Opaque projectiles:** a solid, unshaded Kenney rock mesh forms the colored shot, while the core and tail sprites use alpha discard: their visible pixels are solid, depth-writing shapes, with white cores and solid colored tails. Transparent pixels outside the silhouette are discarded. Enemy bolts are red. They no longer fade into the terrain as translucent puffs.
+- **Fusion and splitting:** merging pulls the two source models inward and pops the fused model into view; splitting sends the solo models outward in a short hop. A ring pulse accompanies both. These are visual effects only, lasting about half a second; they do not pause input or change health, powers or collision state. Transition data is included in online snapshots.
+- **Jumpable terrain:** both maps have three stone steps west of the starting trail, with an exploration power cache on the highest step. Jump onto their tops, land and jump again. Solid sides and low roofs have height-aware collision.
+- **Twin Seals puzzle:** after clearing Broken Court in Amber Ruins, split and enter the two low-roof alcoves at x = -24 and +24, z = -8. Each requires a solo slime. Hold one seal each simultaneously for one second to unlock Pillar Pass and earn 80 party XP. It stays unlocked through defeat. The roof prevents fusion inside, while the seal check prevents solving it from the roof. Regroup and fuse to continue.
+- **New enemies:** Quaternius CC0 skeletons keep their distance and launch red bolts after a 0.55-second warning. Bats hover low and dash after a warning. They join crawlers and mushroom brutes in both maps’ encounters. Bats remain low enough to be hit by ground-following spells and elemental trails.
+- **Difficulty:** crawlers now have 85 HP, brutes 150, skeletons 100, bats 75 and the first boss 1,800. Map two multiplies these by 1.4. Ground enemies move faster and melee hits deal 14 damage, or 22 from brutes. Boss attack patterns are unchanged.
+
+Run `godot --headless --path . --script res://tests/traversal_effect_test.gd` to check platform landing, headroom, the co-op puzzle, solid projectile settings, transformation effects and skeleton attack timing.

@@ -47,6 +47,16 @@ func run() -> void:
 	w._start_encounter()
 	await create_timer(1).timeout
 	await snap("slime-ruins-boss.png")
+	w.stage = 1
+	w._reset_party()
+	w._start_encounter()
+	await create_timer(1).timeout
+	await snap("slime-new-enemies.png")
+	w.enemies.clear()
+	w.bodies[w.players[1].body_id].position = w.terrain.ground(Vector3(-24,0,-2))
+	w.bodies[w.players[2].body_id].position = w.terrain.ground(Vector3(24,0,-2))
+	await create_timer(1).timeout
+	await snap("slime-passages.png")
 	game.queue_free()
 	await process_frame
 	quit()

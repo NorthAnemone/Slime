@@ -26,6 +26,7 @@ func run() -> void:
 	await process_frame
 	var mouse=InputEventMouseMotion.new()
 	mouse.relative=Vector2(50,40)
+	mouse.button_mask=MOUSE_BUTTON_MASK_RIGHT
 	rig._input(mouse)
 	check(rig.yaw[0] < 0 and rig.pitch[0] < -0.42,"Mouse controls yaw and pitch")
 	var wheel=InputEventMouseButton.new()
@@ -76,7 +77,7 @@ func run() -> void:
 	check(w.enemies[b].position.distance_to(before) > 1,"Gale pushes enemies away")
 	w.stage=3
 	w._start_encounter()
-	check(is_equal_approx(w.enemies[w.boss_id].max_health,1960),"Amber Warden has scaled health")
+	check(is_equal_approx(w.enemies[w.boss_id].max_health,2520),"Amber Warden has scaled health")
 	w.victory=true
 	w.enemies.clear()
 	w._reset_party()

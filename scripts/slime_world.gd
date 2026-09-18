@@ -12,6 +12,12 @@ const CameraRig = preload("res://scripts/exploration_camera.gd")
 var ROOMS = ["TRAILHEAD", "WHISPERING GROVE", "SUNLIT RIDGE", "WARDEN SUMMIT"]
 const CENTERS = [48.0, 12.0, -28.0, -68.0]
 var PORTAL = Vector3(0, 8.4, -89)
+var platforms: Array = []
+var plates: Array = []
+var plate_visuals: Array = []
+var puzzle_gate: Node3D
+var puzzle_open = false
+var puzzle_charge = 0.0
 var map_index = 0
 var camera_rig: Node
 var cleared = [true, false, false, false]
@@ -89,8 +95,8 @@ func _start() -> void:
 				"element": key, "ready": 0.0, "room": room}
 	for i in 3:
 		var id = _id()
-		var cache_pos = [Vector3(-34, 0, 30), Vector3(36, 0, -3), Vector3(-30, 0, -48)][i]
-		pickups[id] = {"id": id, "position": terrain.ground(cache_pos),
+		var cache_pos = [Vector3(-22, 0, 36), Vector3(36, 0, -3), Vector3(-30, 0, -48)][i]
+		pickups[id] = {"id": id, "position": Vector3(cache_pos.x, _floor_height(Vector3(cache_pos.x,100,cache_pos.z)), cache_pos.z),
 			"element": (["Ember", "Frost", "Storm"] if map_index == 0 else ["Venom", "Gale", "Venom"])[i], "ready": 0.0, "room": -1}
 
 func _id() -> int:
@@ -176,7 +182,7 @@ func _action(peer_id: int, kind: String) -> void:
 		"jump":
 			body.jump_buffer = 0.14
 			body.jump_cut = false
-			if body.position.y <= terrain.elevation(body.position) + 0.05 or body.coyote > 0:
+			if body.position.y <= _floor_height(body.position) + 0.05 or body.coyote > 0:
 				_launch_jump(body)
 		"jump_release":
 			body.jump_cut = true
@@ -289,7 +295,12 @@ func _simulate(delta: float) -> void:
 		body.land_squash = maxf(0, body.land_squash - delta)
 		body.vertical_speed -= (38.0 if body.vertical_speed < 0 else 25.0) * delta
 		body.position.y += body.vertical_speed * delta
-		var floor_y = terrain.elevation(body.position)
+		var floor_y = _floor_height(body.position, before.y)
+		for slab in platforms:
+			var height = 1.4 if body.members.size() == 1 else 1.85
+			if slab.rect.has_point(Vector2(body.position.x,body.position.z)) and before.y + height <= slab.bottom + 0.01 and body.position.y + height > slab.bottom:
+				body.position.y = slab.bottom - height
+				body.vertical_speed = minf(0, body.vertical_speed)
 		if body.position.y <= floor_y:
 			if body.vertical_speed < -5: body.land_squash = 0.16
 			body.position.y = floor_y
@@ -316,6 +327,7 @@ func _simulate(delta: float) -> void:
 	_update_shots(delta)
 	_update_enemies(delta)
 	_update_hazards(delta)
+	_update_puzzle(delta)
 	_progress()
 
 func _powers(body: Dictionary) -> Dictionary:
@@ -466,6 +478,8 @@ func _check_fusion() -> void:
 			if not consent or not _can_occupy(pos, radius):
 				continue
 			var ratio = (first.health + second.health) / (first.max_health + second.max_health)
+			first.transition = {"kind": "merge", "at": clock, "origin": pos,
+				"sources": [{"position": first.position, "fused": first.members.size() > 1}, {"position": second.position, "fused": second.members.size() > 1}]}
 			first.members = members
 			first.position = pos
 			first.radius = radius
@@ -490,14 +504,15 @@ func _split(body: Dictionary) -> void:
 			pos = body.position
 		_solo(members[i], pos, ratio)
 		bodies[players[members[i]].body_id].velocity = body.velocity
+		bodies[players[members[i]].body_id].transition = {"kind": "split", "at": clock, "origin": body.position}
 	# No healing, recharge or replacement powers when splitting.
 
 func _spawn_enemy(pos: Vector3, kind: String, reward_key: String = "") -> int:
 	pos = terrain.ground(pos)
 	var id = _id()
-	var hp = (1400.0 if kind == "boss" else (110.0 if kind == "brute" else 65.0)) * (1.4 if map_index == 1 else 1.0)
+	var hp = (1800.0 if kind == "boss" else (150.0 if kind == "brute" else (100.0 if kind == "skeleton" else (75.0 if kind == "bat" else 85.0)))) * (1.4 if map_index == 1 else 1.0)
 	enemies[id] = {"id": id, "position": pos, "kind": kind, "radius": 2.1 if kind == "boss" else 0.8,
-		"health": hp, "max_health": hp, "reward_key": reward_key, "attack_at": clock + 2.0, "flash": 0.0,
+		"health": hp, "max_health": hp, "reward_key": reward_key, "attack_at": clock + 2.0, "cast_at": 0.0, "dash_until": 0.0, "facing": Vector3.FORWARD, "aim": Vector3.FORWARD, "flash": 0.0,
 		"trail_shock_at": 0.0, "poison_until": 0.0, "poison_damage": 0.0, "burn_until": 0.0, "burn_damage": 0.0, "frost_until": 0.0, "slow": false, "enraged": false}
 	return id
 
@@ -534,14 +549,32 @@ func _update_enemies(delta: float) -> void:
 			slow = minf(slow, 0.7 if e.kind == "boss" else 0.45)
 		e.slow = slow < 1.0
 		var direction = (target.position - e.position).normalized()
-		var speed = 1.45 if e.kind == "boss" else (2.5 if e.kind == "brute" else 3.1)
+		e.facing = direction
+		var speed = 1.8 if e.kind == "boss" else (2.9 if e.kind == "brute" else 3.6)
+		if e.kind == "skeleton":
+			_skeleton_attack(e,target)
+			if _distance(e,target) < 6: direction = -direction
+			elif _distance(e,target) < 10: direction = Vector3.ZERO
+		if e.kind == "bat":
+			if e.cast_at > 0 and clock >= e.cast_at:
+				e.cast_at = 0
+				e.dash_until = clock + 0.35
+			if clock >= e.attack_at and e.cast_at == 0 and clock >= e.dash_until:
+				e.attack_at = clock + 2.4
+				e.cast_at = clock + 0.55
+				e.aim = direction
+				_effect(e.position,1.1,Color("ffcf5e"),0.55)
+			if e.cast_at > 0: speed = 0
+			elif clock < e.dash_until:
+				direction = e.aim
+				speed = 11
 		if _distance(e, target) > e.radius + target.radius + 0.1:
 			_move(e, direction * speed * slow * delta)
 		if e.kind == "boss":
 			_boss(e, target)
-		elif clock >= e.attack_at and _distance(e, target) < e.radius + target.radius + 0.5:
+		elif e.kind != "skeleton" and (clock >= e.attack_at or (e.kind == "bat" and clock < e.dash_until)) and _distance(e, target) < e.radius + target.radius + 0.5:
 			e.attack_at = clock + 1.0
-			_hurt(target, 16 if e.kind == "brute" else 10)
+			_hurt(target, 22 if e.kind == "brute" else 14)
 
 func _boss(e: Dictionary, target: Dictionary) -> void:
 	if e.health < e.max_health * 0.5 and not e.enraged:
@@ -652,7 +685,7 @@ func _start_encounter() -> void:
 	if stage in [1, 2]:
 		for i in (4 if stage == 1 else 6):
 			_spawn_enemy(terrain.LANDMARKS[stage] + Vector3(-7 + (i % 3) * 7, 0, -3 - (i / 3) * 3),
-				"brute" if stage == 2 and i % 2 == 0 else "crawler", "map%d:encounter:%d:%d" % [map_index, stage, i])
+				["skeleton", "bat", "crawler", "brute"][i % 4], "map%d:encounter:%d:%d" % [map_index, stage, i])
 	elif stage == 3:
 		boss_id = _spawn_enemy(terrain.LANDMARKS[3], "boss", "map%d:warden" % map_index)
 
@@ -660,6 +693,7 @@ func _progress() -> void:
 	if enemies.is_empty(): cleared[stage] = true
 	if stage < 3 and cleared[stage]:
 		for body in bodies.values():
+			if map_index == 1 and stage == 1 and not puzzle_open: continue
 			if body.members.size() >= 2 and body.position.distance_to(terrain.LANDMARKS[stage + 1]) < 11:
 				stage += 1
 				_award_xp(40, "map%d:landmark:%d" % [map_index, stage])
@@ -700,6 +734,10 @@ func _can_occupy(pos: Vector3, radius: float) -> bool:
 	if absf(pos.x) + radius > 48 or pos.z - radius < -98 or pos.z + radius > 65:
 		return false
 	var point = Vector2(pos.x, pos.z)
+	for slab in platforms:
+		if not slab.rect.grow(radius * 0.7).has_point(point): continue
+		var height = 1.4 if radius <= 0.75 else 1.85
+		if pos.y < slab.top - 0.08 and pos.y + height > slab.bottom + 0.01: return false
 	for rect in walls:
 		var nearest = Vector2(clampf(point.x, rect.position.x, rect.end.x), clampf(point.y, rect.position.y, rect.end.y))
 		if point.distance_to(nearest) < radius: return false
@@ -731,13 +769,15 @@ func _snapshot() -> Dictionary:
 		for id in b.members:
 			copy.offering = copy.offering or players[id].offer > clock
 		body_array.append(copy)
-	return {"clock": clock, "map_index": map_index, "party_level": party_level, "party_xp": party_xp, "xp_needed": _xp_needed(), "stage": stage, "cleared": cleared, "victory": victory, "complete": complete, "players": roster,
+	return {"clock": clock, "map_index": map_index, "puzzle_open": puzzle_open, "puzzle_charge": puzzle_charge, "party_level": party_level, "party_xp": party_xp, "xp_needed": _xp_needed(), "stage": stage, "cleared": cleared, "victory": victory, "complete": complete, "players": roster,
 		"bodies": body_array, "enemies": enemies.values().duplicate(true), "trails": trails.values().duplicate(true),
 		"pickups": pickups.values().duplicate(true), "shots": shots.values().duplicate(true), "hazards": hazards.values().duplicate(true)}
 
 func _apply(data: Dictionary) -> void:
 	if data.get("map_index", 0) != map_index: _load_map(data.map_index)
 	state = data
+	puzzle_open = data.get("puzzle_open", false)
+	puzzle_charge = data.get("puzzle_charge", 0.0)
 	var body = _local_body()
 	if not body.is_empty():
 		local_stats_changed.emit(body.health, body.max_health, body.members.size(), 0, data.enemies.size(), 1, data.victory)
@@ -755,6 +795,8 @@ func _apply(data: Dictionary) -> void:
 		objective = "Defend this landmark · %d enemies remain." % data.enemies.size()
 	if data.stage == 3 and not data.victory:
 		objective = ("Moss Warden" if map_index == 0 else "Amber Warden") + " · dodge red warnings; jump to evade ground slams."
+	if map_index == 1 and data.stage == 1 and data.enemies.is_empty() and not puzzle_open:
+		objective = "Split. Hold both seals under the low roofs for 1 second · %d%%" % int(puzzle_charge * 100)
 	if data.victory: objective = "Reach the summit arch together."
 	if data.complete: objective = ("MAP CLEAR · F8: enter Amber Ruins · R: restart" if map_index == 0 else "BOTH MAPS CLEARED · R: restart expedition")
 	encounter_changed.emit({"title": ("THE WILDS · " if map_index == 0 else "AMBER RUINS · ") + ROOMS[data.stage], "objective": objective, "boss_health": boss_health,
@@ -779,6 +821,8 @@ func _process(delta: float) -> void:
 		aim_marker.position = terrain.ground(body.position + Vector3(_mouse_aim().x, 0, _mouse_aim().y) * 5) + Vector3(0, 0.06, 0)
 		aim_marker.visible = body.members.size() > 1
 	portal.visible = state.victory
+	if is_instance_valid(puzzle_gate): puzzle_gate.scale.y = lerpf(puzzle_gate.scale.y, 0.1 if puzzle_open else 1.0, 1-exp(-delta*5))
+	for plate in plate_visuals: plate.modulate = Color("72ef9b") if puzzle_open else Color("ffd66d").lerp(Color.WHITE,puzzle_charge)
 
 # All visuals instantiate public CC0 assets; only their layout and transforms are authored.
 var asset_cache: Dictionary = {}
@@ -859,13 +903,14 @@ func _label3d(parent: Node3D, pos: Vector3, text: String, size: int = 32) -> Lab
 
 func _build_level() -> void:
 	terrain.build(self)
+	preload("res://scripts/traversal.gd").build(self)
 
 func _animate(root: Node, action_name: String) -> void:
 	var anim = root.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	if anim == null:
 		return
 	for name in anim.get_animation_list():
-		if name.ends_with(action_name) or (action_name == "Punch" and name.ends_with("Attack")):
+		if name.ends_with(action_name) or (action_name == "Punch" and name.ends_with("Attack")) or (action_name in ["Walk","Idle"] and name.ends_with("Flying")) or (action_name == "Walk" and name.ends_with("Running")):
 			if anim.current_animation != name or not anim.is_playing():
 				anim.get_animation(name).loop_mode = Animation.LOOP_LINEAR
 				anim.play(name, 0.12)
@@ -887,6 +932,7 @@ func _render_entities(delta: float) -> void:
 				actors.add_child(node)
 				node.position = data.position
 				visuals[key] = node
+				if kind == "bodies": _begin_transform_visual(node, data)
 			var visual: Node3D = visuals[key]
 			var moving = visual.position.distance_to(data.position) > 0.025
 			var render_pos = _sample_remote_position(kind, data)
@@ -903,11 +949,27 @@ func _render_entities(delta: float) -> void:
 					visual.get_node("Offer").visible = data.offering
 					visual.get_node("Power").text = ""
 					var stretch = Vector3.ONE
+					var morph_age = (Time.get_ticks_msec() - visual.get_meta("morph_start", -10000)) / 1000.0
+					var model_node = visual.get_node("Model")
+					model_node.position = Vector3.ZERO
+					if morph_age < 0.5:
+						var transition = data.get("transition", {})
+						if transition.get("kind", "") == "split":
+							var progress = clampf(morph_age / 0.35, 0, 1)
+							model_node.position = (transition.origin - data.position) * pow(1 - progress, 3)
+							model_node.position.y += sin(progress * PI) * 0.45
+							stretch = Vector3(1.15, 0.75, 1.15).lerp(Vector3.ONE, progress)
+						else:
+							var progress = clampf((morph_age - 0.16) / 0.34, 0, 1)
+							var size = maxf(0.01, ease(progress, 0.55))
+							stretch = Vector3(size, size * (1 + sin(progress * PI) * 0.2), size)
 					if data.land_squash > 0: stretch = Vector3(1.12, 0.8, 1.12)
 					elif absf(data.vertical_speed) > 1: stretch = Vector3(0.94, 1.12, 0.94)
 					visual.get_node("Model").scale = visual.get_node("Model").scale.lerp(stretch, 1 - exp(-delta * 22))
 					_animate(visual, "Punch" if fused and data.swing > state.clock else ("Walk" if moving else "Idle"))
 				"enemies":
+					visual.get_node("Model").rotation.y = lerp_angle(visual.get_node("Model").rotation.y, atan2(data.facing.x,data.facing.z), 1-exp(-delta*10))
+					if data.kind == "bat": visual.get_node("Model").position.y = 0.5 + sin(Time.get_ticks_msec()*0.009)*0.12
 					visual.get_node("Name").text = "POISONED" if data.poison_until > state.clock else ("SLOWED" if data.slow else "")
 					_animate(visual, "Walk" if moving else "Idle")
 				"pickups":
@@ -932,7 +994,8 @@ func _make_visual(kind: String, data: Dictionary) -> Node3D:
 			var model = "slime" if is_body else "crawler"
 			if fused: model = "fusion"
 			if boss or (not is_body and data.kind == "brute"): model = "warden"
-			var height = 1.85 if fused else (5.0 if boss else 1.4)
+			if not is_body and data.kind in ["skeleton", "bat"]: model = data.kind
+			var height = 1.85 if fused else (5.0 if boss else (2.0 if not is_body and data.kind == "skeleton" else 1.4))
 			_asset(root, "quaternius/" + model + ".glb", Vector3.ZERO, Vector3(data.radius * 2, height, data.radius * 2)).name = "Model"
 			_label3d(root, Vector3(0, height + 0.4, 0), "").name = "Name"
 			if is_body:
@@ -942,15 +1005,22 @@ func _make_visual(kind: String, data: Dictionary) -> Node3D:
 		"trails":
 			_decal(root, "smoke_01", 1.05, Color(data.color, 0.7), 0.025 + (int(data.id) % 8) * 0.001)
 		"shots":
-			# Reuse Kenney's licensed sprites: colored halo, bright core, trailing dots.
-			var halo = _decal(root, "circle_01" if data.enemy else "smoke_01", 0.85, data.color, 0.8)
-			halo.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-			var core = _decal(root, "smoke_01", 0.32, Color.WHITE, 0.8)
+			# Alpha discard keeps the licensed silhouette but makes every visible
+			# pixel opaque and depth-writing, instead of a translucent puff.
+			var solid = _asset(root, "nature/rock_largeA.glb", Vector3(0,0.45,0), Vector3(0.85,0.85,0.85))
+			solid.name = "SolidCore"
+			_solid_projectile_material(solid, Color("ff2549") if data.enemy else data.color)
+			var core = _decal(root, "smoke_01", 0.26, Color.WHITE, 0.86)
 			core.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 			for i in 3:
-				var tail = _decal(root, "smoke_01", 0.28 - i * 0.06, Color(data.color, 0.7 - i * 0.18), 0.8)
+				var tail = _decal(root, "smoke_01", 0.28 - i * 0.06, Color("ff2549") if data.enemy else Color(data.color, 1.0), 0.8)
 				tail.position -= data.velocity.normalized() * (0.4 + i * 0.35)
 				tail.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			for sprite in root.get_children():
+				if not sprite is Sprite3D: continue
+				sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+				sprite.alpha_scissor_threshold = 0.15
+				sprite.modulate.a = 1.0
 		"pickups":
 			_asset(root, "kenney/column.glb", Vector3.ZERO, Vector3(1.2, 0.5, 1.2))
 			_asset(root, "kenney/potion.glb", Vector3(0, 0.6, 0), Vector3(0.7, 0.9, 0.7)).name = "Crystal"
@@ -1030,6 +1100,11 @@ func _load_map(index: int) -> void:
 	for visual in visuals.values(): visual.queue_free()
 	visuals.clear()
 	walls.clear()
+	platforms.clear()
+	plates.clear()
+	plate_visuals.clear()
+	puzzle_open = false
+	puzzle_charge = 0
 	snapshot_frames.clear()
 	_build_level()
 
@@ -1082,3 +1157,70 @@ func _apply_trail_effects(enemy: Dictionary, delta: float) -> void:
 		if not source.is_empty():
 			var direction = (enemy.position-source.position).normalized()
 			_move(enemy, direction * minf(1.2, 0.45 * powers.Gale) * delta * (0.2 if enemy.kind == "boss" else 1.0))
+
+func _begin_transform_visual(visual: Node3D, data: Dictionary) -> void:
+	var transition = data.get("transition", {})
+	if transition.is_empty() or state.clock - transition.at > 0.5: return
+	visual.set_meta("morph_start", Time.get_ticks_msec())
+	var ring = _decal(visual, "circle_02", data.radius + 0.5, data.color, 0.12)
+	ring.name = "TransformRing"
+	ring.scale = Vector3.ONE * 0.25
+	var pulse = ring.create_tween().set_parallel(true)
+	pulse.tween_property(ring, "scale", Vector3.ONE * 1.8, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	pulse.tween_property(ring, "modulate:a", 0.0, 0.45)
+	pulse.chain().tween_callback(ring.queue_free)
+	if transition.kind != "merge": return
+	visual.get_node("Model").scale = Vector3.ONE * 0.01
+	for source in transition.sources:
+		# Animate only existing public models; gameplay state changes immediately.
+		var ghost = Node3D.new()
+		visual.add_child(ghost)
+		ghost.position = source.position - data.position
+		var model = _asset(ghost, "quaternius/fusion.glb" if source.fused else "quaternius/slime.glb", Vector3.ZERO, Vector3.ONE * (1.85 if source.fused else 1.4))
+		model.rotation.y = atan2(data.facing.x, data.facing.y)
+		var pull = ghost.create_tween().set_parallel(true)
+		pull.tween_property(ghost, "position", Vector3.ZERO, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		pull.tween_property(ghost, "scale", Vector3(0.1, 0.3, 0.1), 0.22)
+		pull.chain().tween_callback(ghost.queue_free)
+
+func _floor_height(pos: Vector3, previous_y: float = -INF) -> float:
+	var height = terrain.elevation(pos)
+	for slab in platforms:
+		if slab.rect.has_point(Vector2(pos.x,pos.z)) and maxf(pos.y,previous_y) >= slab.top - 0.08:
+			height = maxf(height,slab.top)
+	return height
+
+func _update_puzzle(delta: float) -> void:
+	if map_index != 1 or puzzle_open: return
+	var occupied = 0
+	for plate in plates:
+		for body in bodies.values():
+			if body.members.size() == 1 and body.position.distance_to(plate) < 1.5:
+				occupied += 1
+				break
+	puzzle_charge = minf(1, puzzle_charge + delta) if occupied == 2 else 0.0
+	if puzzle_charge >= 1:
+		puzzle_open = true
+		_award_xp(80,"map1:twin_seals")
+		_message("TWIN SEALS OPEN · regroup and fuse to reach Pillar Pass!")
+
+func _skeleton_attack(enemy: Dictionary, target: Dictionary) -> void:
+	if enemy.cast_at > 0 and clock >= enemy.cast_at:
+		enemy.cast_at = 0
+		var id = _id()
+		shots[id] = {"id":id,"position":enemy.position+enemy.aim*1.1,"velocity":enemy.aim*12,"expires":clock+2.5,"enemy":true,"color":Color("ff2549")}
+	if clock >= enemy.attack_at and _distance(enemy,target) < 22:
+		enemy.attack_at = clock + 2.4
+		enemy.cast_at = clock + 0.55
+		enemy.aim = (target.position-enemy.position).normalized()
+		enemy.aim.y = 0
+		_effect(enemy.position,1,Color("ffcf5e"),0.55)
+
+func _solid_projectile_material(node: Node, color: Color) -> void:
+	if node is MeshInstance3D:
+		var material = StandardMaterial3D.new()
+		material.albedo_color = Color(color,1)
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+		node.material_override = material
+	for child in node.get_children(): _solid_projectile_material(child,color)

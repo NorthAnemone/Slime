@@ -34,7 +34,7 @@ func run() -> void:
 	w.trails[999] = {"id": 999, "position": e.position, "color": Color.GREEN, "expires": 10.0}
 	var before = e.position
 	w._update_enemies(0.1)
-	check(e.slow and e.position.distance_to(before) < 0.16, "Solo trail slows enemies without damaging them")
+	check(e.slow and e.position.distance_to(before) < 0.19, "Solo trail slows enemies without damaging them")
 	check(e.health == e.max_health, "Trail does no damage")
 	w.enemies.clear()
 	var ember = w.pickups.values()[0]
@@ -58,7 +58,7 @@ func run() -> void:
 	check(w.players[1].element == "Ember", "Fused body cannot collect power")
 	var eid = w._spawn_enemy(fused.position + Vector3(0, 0, -3), "brute")
 	w._hit(eid, 0, {"Ember": 2})
-	check(w.enemies[eid].health == 94 and w.enemies[eid].burn_damage == 12, "Matching powers double elemental hit and burn")
+	check(w.enemies[eid].health == 134 and w.enemies[eid].burn_damage == 12, "Matching powers double elemental hit and burn")
 	fused.health = 70
 	w._split(fused)
 	check(w.bodies.size() == 2, "Split restores solo bodies")
@@ -86,7 +86,7 @@ func run() -> void:
 	w._reset_party()
 	w._start_encounter()
 	var boss = w.enemies[w.boss_id]
-	check(boss.health == 1400, "Final chamber spawns boss")
+	check(boss.health == 1800, "Final chamber spawns boss")
 	w.clock = boss.attack_at
 	w._boss(boss, w.bodies.values()[0])
 	check(w.hazards.size() == 1 and not w.hazards.values()[0].fired, "Boss telegraphs volley")

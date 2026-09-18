@@ -21,3 +21,12 @@ The fused form uses Quaternius’s CC0 Slime with its existing small arms and id
 Build 0.5 uses in-engine palette, roughness and metallic adjustments on these existing models. The landscape is assembled by placing/scaling/rotating the supplied grass, path, rock and tree models. No new artwork meshes or textures were made. The sky, lighting, fog, UI and invisible collision shapes use standard Godot engine facilities. Nature Kit's original license is included in `assets/nature/License.txt`.
 
 Build 0.8 Amber Ruins reuses the bundled Kenney ground, path, cliff, rock, column, arch and campsite models with in-engine sand/stone palette changes. Elemental trails reuse Kenney smoke artwork tinted by equipped elements. No new artwork was created.
+
+Build 0.9 adds these unmodified, animated CC0 1.0 assets by Quaternius:
+
+| File | Model and source | Use |
+| --- | --- | --- |
+| `assets/quaternius/skeleton.glb` | [Skeleton](https://poly.pizza/m/wODZYCgX5Z) | Ranged enemy |
+| `assets/quaternius/bat.glb` | [Bat](https://poly.pizza/m/hNO9XvjlKa) | Low-hovering dash enemy |
+
+Individual source/download records are included beside both models. Traversal uses existing Kenney cliff models; transform effects animate the existing slime models and circle sprites. Opaque projectiles reuse Kenney’s rock_largeA mesh with an opaque unshaded material, plus existing smoke sprites with alpha discard. No new projectile artwork was created.
