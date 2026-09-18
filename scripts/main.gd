@@ -75,7 +75,7 @@ func _build_interface() -> void:
 	title.add_theme_constant_override("shadow_offset_y", 4)
 	column.add_child(title)
 
-	var tagline := _label("Separate minds. One mighty blob.", 19, Color("91a29e"))
+	var tagline := _label("Two minds. One wild trail.", 19, Color("91a29e"))
 	column.add_child(tagline)
 	column.add_child(_spacer(12))
 
@@ -122,7 +122,7 @@ func _build_interface() -> void:
 	var controls := _label("Solo: leave slowing trails · Collect powers · Fuse to fight", 12, Color("ffd66d"))
 	controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(controls)
-	var build_label := _label("BUILD 0.4 · THE MOSS WARDEN · CC0 ASSETS", 10, Color("60736d"))
+	var build_label := _label("BUILD 0.5 · THE WILDS · THIRD-PERSON CO-OP", 10, Color("60736d"))
 	build_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(build_label)
 
@@ -230,7 +230,7 @@ func _local_game() -> void:
 	if player_name.is_empty():
 		player_name = "Gloob"
 	world.setup_local_coop(player_name, "Arrow Slime")
-	help_label.text = "P1 WASD · Click fight · E/Q fuse/split · F collect\nP2 Arrows · M fight · N/B fuse/split · L collect · Esc menu"
+	help_label.text = "P1 WASD · Mouse look · Click fight · Space jump · E/Q · F collect\nP2 Arrows · U/O look · M fight · Enter jump · N/B · L collect · Tab cursor"
 	_show_toast("Local Dungeon ready: no server or IP required")
 
 
@@ -253,7 +253,7 @@ func _on_connected_to_server() -> void:
 
 func _enter_game(hosting: bool) -> void:
 	_create_world()
-	help_label.text = "E fuse · Q split · F collect · Click fight (fused only) · Esc menu"
+	help_label.text = "WASD · Mouse look · Space jump · Click fight · E/Q fuse/split · F collect · Tab cursor"
 	var player_name := name_input.text.strip_edges()
 	if player_name.is_empty():
 		player_name = "Gloob"
@@ -386,7 +386,10 @@ func _unhandled_input(event: InputEvent) -> void:
 func _configure_inputs() -> void:
 	var bindings = {"p2_move_left": KEY_LEFT, "p2_move_right": KEY_RIGHT,
 		"p2_move_up": KEY_UP, "p2_move_down": KEY_DOWN, "collect": KEY_F,
-		"p2_collect": KEY_L, "restart_run": KEY_R}
+		"p2_collect": KEY_L, "restart_run": KEY_R, "jump": KEY_SPACE, "p2_jump": KEY_ENTER}
+	for event in InputMap.action_get_events("attack"):
+		if event is InputEventKey and event.physical_keycode == KEY_SPACE:
+			InputMap.action_erase_event("attack", event)
 	for action_name in bindings:
 		if not InputMap.has_action(action_name): InputMap.add_action(action_name)
 		InputMap.action_erase_events(action_name)

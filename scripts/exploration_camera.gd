@@ -1,0 +1,108 @@
+extends Node
+## Local co-op: two third-person views while separate; one while fused.
+var world: Node3D
+var cameras: Array[Camera3D] = []
+var panes: Array[SubViewportContainer] = []
+var yaw = [0.0, 0.0]
+var pitch = [-0.22, -0.22]
+var distance = [7.0, 7.0]
+var split = false
+var layer: CanvasLayer
+var divider: ColorRect
+var view_labels: Array[Label] = []
+
+func setup(owner_world: Node3D) -> void:
+	world = owner_world
+	layer = CanvasLayer.new()
+	layer.layer = 1
+	add_child(layer)
+	for i in 2:
+		var pane = SubViewportContainer.new()
+		pane.stretch = true
+		pane.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		layer.add_child(pane)
+		var view = SubViewport.new()
+		view.world_3d = world.get_world_3d()
+		view.handle_input_locally = false
+		pane.add_child(view)
+		var cam = Camera3D.new()
+		cam.fov = 72
+		cam.near = 0.15
+		cam.far = 400
+		cam.position = Vector3(0, 4, 60)
+		view.add_child(cam)
+		cam.current = true
+		cameras.append(cam)
+		panes.append(pane)
+		var label = Label.new()
+		label.text = "PLAYER %d" % (i + 1)
+		label.add_theme_font_size_override("font_size", 13)
+		label.add_theme_color_override("font_shadow_color", Color.BLACK)
+		label.add_theme_constant_override("shadow_offset_x", 1)
+		label.add_theme_constant_override("shadow_offset_y", 1)
+		layer.add_child(label)
+		view_labels.append(label)
+	divider = ColorRect.new()
+	divider.color = Color(0.05, 0.09, 0.08, 0.8)
+	divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(divider)
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+func _exit_tree() -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		yaw[0] -= event.relative.x * 0.003
+		pitch[0] = clampf(pitch[0] - event.relative.y * 0.003, -0.95, 0.12)
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_TAB:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
+
+func movement(raw: Vector2, index: int) -> Vector2:
+	return raw.rotated(-yaw[index if split else 0])
+
+func aim(index: int) -> Vector2:
+	var angle = yaw[index if split else 0]
+	return Vector2(-sin(angle), -cos(angle))
+
+func update(delta: float) -> void:
+	var first = world._local_body()
+	if first.is_empty(): return
+	var second = {}
+	if world.local_coop:
+		for b in world.state.bodies:
+			if 2 in b.members: second = b
+	var was_split = split
+	split = not second.is_empty() and first.id != second.id
+	if split and not was_split: yaw[1] = yaw[0]
+	if world.local_coop:
+		var index = 1 if split else 0
+		yaw[index] += (float(Input.is_physical_key_pressed(KEY_U)) - float(Input.is_physical_key_pressed(KEY_O))) * delta * 1.8
+	var size = get_viewport().get_visible_rect().size
+	panes[0].size = Vector2(size.x * (0.5 if split else 1.0), size.y)
+	panes[1].size = Vector2(size.x * 0.5, size.y)
+	panes[1].position = Vector2(size.x * 0.5, 0)
+	panes[1].visible = split
+	divider.visible = split
+	divider.position = Vector2(size.x / 2 - 1, 0)
+	divider.size = Vector2(2, size.y)
+	for i in 2:
+		view_labels[i].visible = split
+		view_labels[i].position = Vector2(18 + size.x * 0.5 * i, size.y - 118)
+	panes[1].get_child(0).render_target_update_mode = SubViewport.UPDATE_ALWAYS if split else SubViewport.UPDATE_DISABLED
+	for i in (2 if split else 1):
+		var body = first if i == 0 else second
+		var fused = body.members.size() > 1
+		var target = body.position + Vector3(0, 1.65 if fused else 1.0, 0)
+		distance[i] = lerpf(distance[i], 10.0 + body.members.size() * 0.3 if fused else 7.0, minf(1, delta * 4))
+		var offset = Vector3(0, 0, distance[i]).rotated(Vector3.RIGHT, pitch[i]).rotated(Vector3.UP, yaw[i])
+		var desired = target + offset
+		desired.y = maxf(desired.y, world.terrain.elevation(desired) + 0.7)
+		var query = PhysicsRayQueryParameters3D.create(target, desired)
+		var hit = world.get_world_3d().direct_space_state.intersect_ray(query)
+		if not hit.is_empty(): desired = hit.position + hit.normal * 0.35
+		var cam = cameras[i]
+		cam.position = cam.position.lerp(desired, 1.0 - exp(-delta * 12))
+		var smoothed_hit = world.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(target, cam.position))
+		if not smoothed_hit.is_empty(): cam.position = smoothed_hit.position + smoothed_hit.normal * 0.35
+		cam.look_at(target)

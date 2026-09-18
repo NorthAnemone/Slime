@@ -4,6 +4,7 @@ All shipped model and effect artwork comes from the following publicly available
 
 | Files | Creator / pack | Original source | Use |
 | --- | --- | --- | --- |
+| `assets/nature/` | Kenney — Nature Kit 1.0 | https://kenney.nl/assets/nature-kit | Grass surfaces, paths, pine trees, rocks, plants, flowers, campsite props |
 | `assets/kenney/` | Kenney — Mini Dungeon 2.0 | https://kenney.nl/assets/mini-dungeon | Floors, walls, arches, gates, columns, banners, potion pickups |
 | `assets/particles/` | Kenney — Particle Pack | https://kenney.nl/assets/particle-pack | Slime trails, targeting, spell shots, fusion offers, boss warning circles |
 | `assets/quaternius/slime.glb` | Quaternius — Ultimate Monsters, Green Blob | https://poly.pizza/m/y4kJh8EeYS | Solo slime |
@@ -16,3 +17,5 @@ Quaternius pack source and license: https://quaternius.com/packs/ultimatemonster
 Kenney's original license files are included in each corresponding folder. Quaternius models have individual source records, and the complete CC0 legal text is included at `assets/quaternius/CC0-1.0.txt`.
 
 The fused form currently uses the stock Yeti model, not a bespoke humanoid slime. It has existing arms, legs, walk/idle/punch animations and appears when players fuse. This keeps the prototype entirely within public art assets. No paid assets or account login are needed to run the project.
+
+Build 0.5 uses in-engine palette, roughness and metallic adjustments on these existing models. The landscape is assembled by placing/scaling/rotating the supplied grass, path, rock and tree models. No new artwork meshes or textures were made. The sky, lighting, fog, UI and invisible collision shapes use standard Godot engine facilities. Nature Kit's original license is included in `assets/nature/License.txt`.

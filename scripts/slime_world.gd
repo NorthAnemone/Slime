@@ -7,9 +7,13 @@ signal encounter_changed(info: Dictionary)
 
 const COLORS = [Color("#72ef9b"), Color("#65d5ff"), Color("#ff8fd8"), Color("#ffd66d"), Color("#b79cff"), Color("#ff9875")]
 const ELEMENTS = {"Ember": Color("#ff9454"), "Frost": Color("#75e1ff"), "Storm": Color("#c5a1ff")}
-const ROOMS = ["THE NURSERY", "ROOT GALLERY", "CRUCIBLE HALL", "MOSS WARDEN"]
-const CENTERS = [36.0, 12.0, -12.0, -36.0]
-const PORTAL = Vector3(0, 0, -43)
+const terrain = preload("res://scripts/outdoor_level.gd")
+const CameraRig = preload("res://scripts/exploration_camera.gd")
+const ROOMS = ["TRAILHEAD", "WHISPERING GROVE", "SUNLIT RIDGE", "WARDEN SUMMIT"]
+const CENTERS = [48.0, 12.0, -28.0, -68.0]
+const PORTAL = Vector3(0, 8.4, -89)
+var camera_rig: Node
+var cleared = [true, false, false, false]
 var is_host = false
 var local_coop = false
 var local_peer_id = 1
@@ -47,6 +51,9 @@ func _ready() -> void:
 	camera.look_at(Vector3(0, 0, 36))
 	camera.make_current()
 	_build_level()
+	camera_rig = CameraRig.new()
+	add_child(camera_rig)
+	camera_rig.setup(self)
 	multiplayer.peer_disconnected.connect(_leave)
 
 func setup_host(player_name: String) -> void:
@@ -72,8 +79,13 @@ func _start() -> void:
 		for i in 3:
 			var key = ELEMENTS.keys()[i]
 			var id = _id()
-			pickups[id] = {"id": id, "position": Vector3(-6 + i * 6, 0, CENTERS[room] + 5),
+			pickups[id] = {"id": id, "position": terrain.ground(terrain.LANDMARKS[room] + Vector3(-5 + i * 5, 0, 5)),
 				"element": key, "ready": 0.0, "room": room}
+	for i in 3:
+		var id = _id()
+		var cache_pos = [Vector3(-34, 0, 30), Vector3(36, 0, -3), Vector3(-30, 0, -48)][i]
+		pickups[id] = {"id": id, "position": terrain.ground(cache_pos),
+			"element": ELEMENTS.keys()[i], "ready": 0.0, "room": -1}
 
 func _id() -> int:
 	var id = next_id
@@ -89,10 +101,11 @@ func _add_player(peer_id: int, player_name: String) -> void:
 	_solo(peer_id, Vector3(-2 + players.size() * 1.7, 0, CENTERS[stage] + 8), 1.0)
 
 func _solo(peer_id: int, pos: Vector3, ratio: float) -> void:
+	pos.y = maxf(pos.y, terrain.elevation(pos))
 	var id = _id()
 	bodies[id] = {"id": id, "members": [peer_id], "position": pos, "radius": 0.7,
 		"health": maxf(1, 70 * ratio), "max_health": 70.0, "color": players[peer_id].color,
-		"next_trail": 0.0, "invulnerable": clock + 1.5, "swing": 0.0, "facing": Vector2.UP}
+		"vertical_speed": 0.0, "next_trail": 0.0, "invulnerable": clock + 1.5, "swing": 0.0, "facing": Vector2.UP}
 	players[peer_id].body_id = id
 
 @rpc("any_peer", "call_remote", "reliable")
@@ -127,7 +140,7 @@ func _message(message: String) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.echo:
 		return
-	for kind in ["fuse", "split", "collect"]:
+	for kind in ["fuse", "split", "collect", "jump"]:
 		if event.is_action_pressed(kind):
 			if is_host:
 				_action(local_peer_id, kind)
@@ -146,6 +159,9 @@ func _action(peer_id: int, kind: String) -> void:
 		return
 	var body = bodies[p.body_id]
 	match kind:
+		"jump":
+			if body.position.y <= terrain.elevation(body.position) + 0.05:
+				body.vertical_speed = 8.0
 		"fuse":
 			p.offer = clock + 3.0
 		"split":
@@ -156,7 +172,7 @@ func _action(peer_id: int, kind: String) -> void:
 				_message("Split first! Only solo slimes absorb power.")
 				return
 			for item in pickups.values():
-				if item.room == stage and item.ready <= clock and _distance(item, body) < 2.3:
+				if item.ready <= clock and _distance(item, body) < 2.3:
 					p.element = item.element
 					item.ready = clock + 1.0
 					_message("%s absorbed %s. Fuse to activate it!" % [p.name, p.element])
@@ -171,22 +187,21 @@ func _set_input(peer_id: int, move: Vector2, aim: Vector2, attack: bool) -> void
 		p.last_input = clock
 
 func _read_inputs() -> void:
-	var move = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var move = camera_rig.movement(Input.get_vector("move_left", "move_right", "move_up", "move_down"), 0)
 	var aim = _mouse_aim()
 	if is_host:
 		_set_input(local_peer_id, move, aim, Input.is_action_pressed("attack"))
 	else:
 		submit_input.rpc_id(1, move, aim, Input.is_action_pressed("attack"))
 	if local_coop and players.has(2):
-		var move2 = Input.get_vector("p2_move_left", "p2_move_right", "p2_move_up", "p2_move_down")
+		var move2 = camera_rig.movement(Input.get_vector("p2_move_left", "p2_move_right", "p2_move_up", "p2_move_down"), 1)
 		var body = bodies[players[2].body_id]
 		var target = _nearest(body.position, enemies)
-		var aim2 = Vector2.UP
-		if not target.is_empty():
+		var aim2 = camera_rig.aim(1)
+		if not target.is_empty() and target.position.distance_to(body.position) < 25:
 			var d = target.position - body.position
 			aim2 = Vector2(d.x, d.z).normalized()
-		elif move2.length() > 0.1:
-			aim2 = move2
+
 		_set_input(2, move2, aim2, Input.is_action_pressed("p2_attack"))
 
 func _physics_process(delta: float) -> void:
@@ -226,7 +241,13 @@ func _simulate(delta: float) -> void:
 		move /= float(body.members.size())
 		var speed = 7.2 if body.members.size() == 1 else 5.7
 		_move(body, Vector3(move.x, 0, move.y) * speed * delta)
-		if body.members.size() == 1 and clock >= body.next_trail and move.length() > 0.1:
+		body.vertical_speed -= 22.0 * delta
+		body.position.y += body.vertical_speed * delta
+		var floor_y = terrain.elevation(body.position)
+		if body.position.y <= floor_y:
+			body.position.y = floor_y
+			body.vertical_speed = 0.0
+		if body.members.size() == 1 and clock >= body.next_trail and move.length() > 0.1 and body.position.y < floor_y + 0.1:
 			body.next_trail = clock + 0.18
 			var id = _id()
 			trails[id] = {"id": id, "position": body.position, "color": body.color, "expires": clock + 7.0}
@@ -319,6 +340,7 @@ func _update_shots(delta: float) -> void:
 	for id in shots.keys():
 		var s = shots[id]
 		var next = s.position + s.velocity * delta
+		next.y = terrain.elevation(next)
 		if s.expires < clock or not _can_occupy(next, 0.2):
 			shots.erase(id)
 			continue
@@ -377,6 +399,7 @@ func _split(body: Dictionary) -> void:
 	# No healing, recharge or replacement powers when splitting.
 
 func _spawn_enemy(pos: Vector3, kind: String) -> int:
+	pos = terrain.ground(pos)
 	var id = _id()
 	var hp = 1400.0 if kind == "boss" else (110.0 if kind == "brute" else 65.0)
 	enemies[id] = {"id": id, "position": pos, "kind": kind, "radius": 2.1 if kind == "boss" else 0.8,
@@ -443,7 +466,7 @@ func _boss(e: Dictionary, target: Dictionary) -> void:
 		2:
 			if enemies.size() < 7:
 				for x in [-8, 8]:
-					_spawn_enemy(Vector3(x, 0, -38), "crawler")
+					_spawn_enemy(Vector3(x, 0, -71), "crawler")
 			var id = _id()
 			hazards[id] = {"id": id, "position": e.position, "radius": 5.0,
 				"trigger": clock + 1.6, "expires": clock + 2.1, "kind": "slam", "fired": false}
@@ -465,7 +488,7 @@ func _update_hazards(_delta: float) -> void:
 			h.fired = true
 			if h.kind == "slam":
 				for body in bodies.values():
-					if _distance(h, body) < h.radius + body.radius:
+					if _distance(h, body) < h.radius + body.radius and body.position.y < terrain.elevation(body.position) + 1.3:
 						_hurt(body, 30)
 			elif h.kind == "volley":
 				for i in 12:
@@ -492,7 +515,7 @@ func _checkpoint() -> void:
 		return
 	_reset_party()
 	_start_encounter()
-	_message("Reformed at this chamber's checkpoint. Your powers survived.")
+	_message("Reformed at the last landmark. Your powers survived.")
 
 func _reset_party() -> void:
 	bodies.clear()
@@ -501,12 +524,13 @@ func _reset_party() -> void:
 	hazards.clear()
 	var i = 0
 	for id in players:
-		_solo(id, Vector3(-2 + i * 1.8, 0, CENTERS[stage] + 8), 1.0)
+		_solo(id, terrain.ground(terrain.LANDMARKS[stage] + Vector3(-2 + i * 1.8, 0, 8)), 1.0)
 		players[id].offer = 0.0
 		i += 1
 
 func _restart() -> void:
 	stage = 0
+	cleared = [true, false, false, false]
 	victory = false
 	complete = false
 	for p in players.values():
@@ -522,26 +546,25 @@ func _start_encounter() -> void:
 	boss_id = 0
 	if stage in [1, 2]:
 		for i in (4 if stage == 1 else 6):
-			_spawn_enemy(Vector3(-9 + (i % 3) * 9, 0, CENTERS[stage] - 3 - (i / 3) * 3),
+			_spawn_enemy(terrain.LANDMARKS[stage] + Vector3(-7 + (i % 3) * 7, 0, -3 - (i / 3) * 3),
 				"brute" if stage == 2 and i % 2 == 0 else "crawler")
 	elif stage == 3:
-		boss_id = _spawn_enemy(Vector3(0, 0, -39), "boss")
+		boss_id = _spawn_enemy(terrain.LANDMARKS[3], "boss")
 
 func _progress() -> void:
-	if stage < 3 and enemies.is_empty():
-		var exit_z = CENTERS[stage] - 10
+	if enemies.is_empty(): cleared[stage] = true
+	if stage < 3 and cleared[stage]:
 		for body in bodies.values():
-			if body.members.size() >= 2 and body.position.z < exit_z:
+			if body.members.size() >= 2 and body.position.distance_to(terrain.LANDMARKS[stage + 1]) < 11:
 				stage += 1
-				_reset_party()
 				_start_encounter()
-				_message(ROOMS[stage] + " · split, prepare your powers, then fuse!")
+				_message(ROOMS[stage] + " · defend the landmark together!")
 				return
 	if victory:
 		for body in bodies.values():
-			if body.members.size() >= 2 and body.position.distance_to(PORTAL) < 3:
+			if body.members.size() >= 2 and body.position.distance_to(PORTAL) < 4:
 				complete = true
-				_message("CRUCIBLE CLEARED! Press R to play again.")
+				_message("SUMMIT REACHED! Press R for another expedition.")
 				break
 
 func _leave(peer_id: int) -> void:
@@ -568,18 +591,12 @@ func _nearest(pos: Vector3, collection: Dictionary) -> Dictionary:
 	return best
 
 func _can_occupy(pos: Vector3, radius: float) -> bool:
-	var rects = walls.duplicate()
-	# Confine all actors to the active chamber. Crossing the exit triggers next stage.
-	rects.append(Rect2(-20, CENTERS[stage] + 11.8, 40, 1))
-	if not enemies.is_empty():
-		rects.append(Rect2(-20, CENTERS[stage] - 12, 40, 1))
-	var point = Vector2(pos.x, pos.z)
-	if absf(pos.x) + radius > 19.5 or absf(pos.z) + radius > 47.5:
+	if absf(pos.x) + radius > 48 or pos.z - radius < -98 or pos.z + radius > 65:
 		return false
-	for rect in rects:
+	var point = Vector2(pos.x, pos.z)
+	for rect in walls:
 		var nearest = Vector2(clampf(point.x, rect.position.x, rect.end.x), clampf(point.y, rect.position.y, rect.end.y))
-		if point.distance_to(nearest) < radius:
-			return false
+		if point.distance_to(nearest) < radius: return false
 	return true
 
 func _move(entity: Dictionary, amount: Vector3) -> void:
@@ -590,6 +607,7 @@ func _move(entity: Dictionary, amount: Vector3) -> void:
 	next = pos + Vector3(0, 0, amount.z)
 	if _can_occupy(next, entity.radius):
 		pos.z = next.z
+	if not entity.has("members"): pos.y = terrain.elevation(pos)
 	entity.position = pos
 
 func _snapshot() -> Dictionary:
@@ -607,7 +625,7 @@ func _snapshot() -> Dictionary:
 		for id in b.members:
 			copy.offering = copy.offering or players[id].offer > clock
 		body_array.append(copy)
-	return {"clock": clock, "stage": stage, "victory": victory, "complete": complete, "players": roster,
+	return {"clock": clock, "stage": stage, "cleared": cleared, "victory": victory, "complete": complete, "players": roster,
 		"bodies": body_array, "enemies": enemies.values().duplicate(true), "trails": trails.values().duplicate(true),
 		"pickups": pickups.values().duplicate(true), "shots": shots.values().duplicate(true), "hazards": hazards.values().duplicate(true)}
 
@@ -623,17 +641,15 @@ func _apply(data: Dictionary) -> void:
 		if e.kind == "boss":
 			boss_health = e.health
 			boss_max = e.max_health
-	var objective = "Fuse and go north through the arch."
+	var objective = "Travel fused along the trail to " + ROOMS[mini(3, data.stage + 1)] + "."
 	if data.stage == 0:
-		objective = "Solo: collect a power (F / L). Fuse (E + N), then go north."
+		objective = "Collect powers (F / L). Fuse near your ally (E + N). Follow the uphill trail."
 	elif not data.enemies.is_empty():
-		objective = "Defeat %d enemies to unlock the north arch." % data.enemies.size()
-	if data.stage == 3:
-		objective = "Dodge red warnings. Slow the Warden with solo trails; fuse to strike."
-	if data.victory:
-		objective = "Warden defeated! Fuse and enter the heart gate."
-	if data.complete:
-		objective = "LEVEL COMPLETE · R: replay   Esc: menu"
+		objective = "Defend this landmark · %d enemies remain." % data.enemies.size()
+	if data.stage == 3 and not data.victory:
+		objective = "Moss Warden · dodge red warnings; jump to evade ground slams."
+	if data.victory: objective = "Reach the summit arch together."
+	if data.complete: objective = "EXPEDITION COMPLETE · R: replay · Esc: menu"
 	encounter_changed.emit({"title": ROOMS[data.stage], "objective": objective, "boss_health": boss_health,
 		"boss_max": boss_max, "power": body.get("power_name", ""), "complete": data.complete})
 
@@ -644,44 +660,43 @@ func _local_body() -> Dictionary:
 	return {}
 
 func _mouse_aim() -> Vector2:
-	var body = _local_body()
-	if body.is_empty():
-		return Vector2.UP
-	var mouse = get_viewport().get_mouse_position()
-	var origin = camera.project_ray_origin(mouse)
-	var ray = camera.project_ray_normal(mouse)
-	if absf(ray.y) < 0.001:
-		return Vector2.UP
-	var pos = origin + ray * (-origin.y / ray.y)
-	return Vector2(pos.x - body.position.x, pos.z - body.position.z).normalized()
+	return camera_rig.aim(0) if camera_rig != null else Vector2.UP
 
 func _process(delta: float) -> void:
-	if state.is_empty():
-		return
+	if state.is_empty(): return
 	_render_entities(delta)
+	camera_rig.update(delta)
+	camera = camera_rig.cameras[0]
 	var body = _local_body()
 	if not body.is_empty():
-		var center: Vector3 = body.position
-		var separation = 0.0
-		if local_coop:
-			for other in state.bodies:
-				if 2 in other.members and other.id != body.id:
-					center = (center + other.position) / 2
-					separation = body.position.distance_to(other.position)
-		center.z -= 4.5
-		var zoom = 1.0 + separation / 27.0
-		camera.position = camera.position.lerp(center + Vector3(0, 19, 16) * zoom, minf(1, delta * 7))
-		camera.look_at(center)
-		aim_marker.position = body.position + Vector3(_mouse_aim().x, 0.12, _mouse_aim().y) * 2.0
+		aim_marker.position = terrain.ground(body.position + Vector3(_mouse_aim().x, 0, _mouse_aim().y) * 5) + Vector3(0, 0.06, 0)
 		aim_marker.visible = body.members.size() > 1
-	for i in gates.size():
-		gates[i].visible = i == state.stage and not state.enemies.is_empty()
 	portal.visible = state.victory
-	for i in room_labels.size():
-		room_labels[i].visible = i == state.stage
 
-# Visuals are instances of public CC0 models/textures. No generated artwork.
+# All visuals instantiate public CC0 assets; only their layout and transforms are authored.
 var asset_cache: Dictionary = {}
+var surface_cache: Dictionary = {}
+
+func _style_asset(node: Node, nature: bool) -> void:
+	# Engine material tuning of licensed models; no new textures or mesh artwork.
+	var palette = {"grass": Color("718455"), "leafsDark": Color("3c5b48"),
+		"leafs": Color("628553"), "leafsLight": Color("8f9d58"),
+		"woodBarkDark": Color("564737"), "woodBark": Color("79624a"),
+		"dirt": Color("88775f"), "stone": Color("737b78")}
+	if node is MeshInstance3D:
+		for i in node.mesh.get_surface_count():
+			var original = node.mesh.surface_get_material(i)
+			if original is StandardMaterial3D:
+				var key = str(original.get_instance_id()) + str(nature)
+				if not surface_cache.has(key):
+					var mat = original.duplicate()
+					mat.metallic = 0
+					mat.roughness = 0.95
+					if nature and palette.has(original.resource_name):
+						mat.albedo_color = palette[original.resource_name]
+					surface_cache[key] = mat
+				node.set_surface_override_material(i, surface_cache[key])
+	for child in node.get_children(): _style_asset(child, nature)
 
 func _asset(parent: Node3D, path: String, pos: Vector3, size: Vector3) -> Node3D:
 	if not asset_cache.has(path):
@@ -691,6 +706,7 @@ func _asset(parent: Node3D, path: String, pos: Vector3, size: Vector3) -> Node3D
 	holder.position = pos
 	var model = asset_cache[path].instantiate()
 	holder.add_child(model)
+	_style_asset(model, path.begins_with("nature/"))
 	var bounds = _bounds(model, Transform3D.IDENTITY)
 	var extent = bounds.size
 	model.scale = Vector3.ONE * (size.y / maxf(0.001, extent.y)) if path.begins_with("quaternius/") else size / Vector3(maxf(0.001, extent.x), maxf(0.001, extent.y), maxf(0.001, extent.z))
@@ -731,49 +747,7 @@ func _label3d(parent: Node3D, pos: Vector3, text: String, size: int = 32) -> Lab
 	return label
 
 func _build_level() -> void:
-	var geometry = $GeneratedGeometry
-	for z in [-48, 48]:
-		walls.append(Rect2(-20, z, 40, 0.7))
-	for x in [-20, 20]:
-		walls.append(Rect2(x, -48, 0.7, 96))
-	for z in [24, 0, -24]:
-		walls.append(Rect2(-20, z, 15, 0.9))
-		walls.append(Rect2(5, z, 15, 0.9))
-	for rect in walls:
-		var along_x = rect.size.x > rect.size.y
-		var length = rect.size.x if along_x else rect.size.y
-		var count = int(ceil(length / 3))
-		for i in count:
-			var pos = Vector3(rect.position.x, 0, rect.position.y)
-			pos += Vector3((i + 0.5) * length / count, 0, 0) if along_x else Vector3(0, 0, (i + 0.5) * length / count)
-			_asset(geometry, "kenney/wall.glb", pos, Vector3(length / count, 2.6, 0.7) if along_x else Vector3(0.7, 2.6, length / count))
-	for room in 4:
-		var z = CENTERS[room]
-		for x in range(-18, 19, 3):
-			for zz in range(-10, 12, 3):
-				_asset(geometry, "kenney/floor-detail.glb" if (x + zz) % 3 == 0 else "kenney/floor.glb", Vector3(x, -0.3, z + zz), Vector3(3, 0.3, 3))
-		for x in [-17, 17]:
-			for dz in [-8, 8]:
-				_asset(geometry, "kenney/column.glb", Vector3(x, 0, z + dz), Vector3(1.5, 3.3, 1.5))
-				walls.append(Rect2(x - 0.75, z + dz - 0.75, 1.5, 1.5))
-				var light = OmniLight3D.new()
-				geometry.add_child(light)
-				light.position = Vector3(x, 3, z + dz)
-				light.light_color = Color("83ffba") if room % 2 == 0 else Color("ffd18b")
-				light.light_energy = 0.6
-				light.omni_range = 9
-			_asset(geometry, "kenney/banner.glb", Vector3(x, 0, z), Vector3(1.4, 3, 0.8))
-		room_labels.append(_label3d(geometry, Vector3(0, 4.4, z - 10), ROOMS[room], 44))
-		if room < 3:
-			_asset(geometry, "kenney/wall-opening.glb", Vector3(0, 0, z - 12), Vector3(10, 4, 1))
-			var gate = _asset(geometry, "kenney/gate.glb", Vector3(0, 0, z - 12), Vector3(9, 3.8, 0.5))
-			gates.append(gate)
-	portal = _asset(geometry, "kenney/wall-opening.glb", PORTAL, Vector3(6, 5, 1))
-	_decal(portal, "magic_01", 3, Color("7bffc1"))
-	_label3d(portal, Vector3(0, 5.5, 0), "HEART GATE")
-	aim_marker = Node3D.new()
-	add_child(aim_marker)
-	_decal(aim_marker, "circle_02", 0.25, Color.WHITE)
+	terrain.build(self)
 
 func _animate(root: Node, action_name: String) -> void:
 	var anim = root.find_child("AnimationPlayer", true, false) as AnimationPlayer
@@ -812,13 +786,13 @@ func _render_entities(delta: float) -> void:
 					visual.get_node("Model").rotation.y = lerp_angle(visual.get_node("Model").rotation.y, atan2(face.x, face.y), minf(1, delta * 8))
 					visual.get_node("Name").text = ("FUSED  %d/%d" % [data.health, data.max_health]) if fused else "P%d" % data.members[0]
 					visual.get_node("Offer").visible = data.offering
-					visual.get_node("Power").text = data.power_name if fused else ""
+					visual.get_node("Power").text = ""
 					_animate(visual, "Punch" if fused and data.swing > state.clock else ("Walk" if moving else "Idle"))
 				"enemies":
-					visual.get_node("Name").text = "%s  %d/%d%s" % ["WARDEN" if data.kind == "boss" else data.kind.to_upper(), maxf(0, data.health), data.max_health, " SLOWED" if data.slow else ""]
+					visual.get_node("Name").text = "SLOWED" if data.slow else ""
 					_animate(visual, "Walk" if moving else "Idle")
 				"pickups":
-					visual.visible = data.room == state.stage and data.ready <= state.clock
+					visual.visible = data.ready <= state.clock
 					visual.get_node("Crystal").rotation.y += delta * 1.7
 				"trails":
 					visual.scale = Vector3.ONE * clampf((data.expires - state.clock) / 2, 0.1, 1.0)
@@ -855,7 +829,7 @@ func _make_visual(kind: String, data: Dictionary) -> Node3D:
 			_asset(root, "kenney/column.glb", Vector3.ZERO, Vector3(1.2, 0.5, 1.2))
 			_asset(root, "kenney/potion.glb", Vector3(0, 0.6, 0), Vector3(0.7, 0.9, 0.7)).name = "Crystal"
 			_decal(root, "magic_01", 1.2, ELEMENTS[data.element])
-			_label3d(root, Vector3(0, 2, 0), data.element + "\nSOLO: F / L", 30).modulate = ELEMENTS[data.element]
+			_label3d(root, Vector3(0, 2, 0), data.element, 30).modulate = ELEMENTS[data.element]
 		"hazards":
 			_decal(root, "circle_01", data.radius, Color(1, 0.1, 0.15, 0.8), 0.08)
 	return root

@@ -74,9 +74,10 @@ func run() -> void:
 	w._hit(eid, 0, w._powers(fused))
 	check(w.enemies[eid].burn_until > w.clock and w.enemies[eid].frost_until > w.clock, "Frostfire applies burn and slow")
 	w.enemies.clear()
-	fused.position = Vector3(0, 0, 25)
+	fused.position = w.terrain.LANDMARKS[1]
 	w._progress()
-	check(w.stage == 1 and w.enemies.size() == 4, "Nursery exits into first combat chamber")
+	check(w.stage == 1 and w.enemies.size() == 4, "Entering grove starts encounter without teleport")
+	check(fused.position == w.terrain.LANDMARKS[1], "Landmark transition preserves player position")
 	w.stage = 2
 	w._reset_party()
 	w._start_encounter()
@@ -110,6 +111,44 @@ func run() -> void:
 	check(w.visuals.size() > 0, "Imported 3D assets instantiate")
 	w._restart()
 	check(w.stage == 0 and not w.complete and w.bodies.size() == 2, "Replay resets run")
+	w._apply(w._snapshot())
+	w._process(0.1)
+	check(w.camera_rig.split, "Separate local slimes have two third-person views")
+	check(w._can_occupy(Vector3(0, 0, 25), 0.7), "Old room gates no longer block exploration")
+	check(is_equal_approx(w.terrain.elevation(Vector3(0, 0, -68)), 8.4), "Summit is elevated above trailhead")
+	w.camera_rig.yaw[0] = PI / 2
+	check(w.camera_rig.movement(Vector2.UP, 0).distance_to(Vector2.LEFT) < 0.001, "Movement is camera-relative")
+	w.camera_rig.yaw[0] = 0
+	var jumper = w.bodies[w.players[1].body_id]
+	w._action(1, "jump")
+	w._simulate(0.1)
+	check(jumper.position.y > w.terrain.elevation(jumper.position), "Jump lifts slime off terrain")
+	for i in 60: w._simulate(1.0 / 60)
+	check(is_equal_approx(jumper.position.y, w.terrain.elevation(jumper.position)), "Jump lands on terrain")
+	w._action(1, "fuse")
+	w._action(2, "fuse")
+	w._check_fusion()
+	w._apply(w._snapshot())
+	w._process(0.1)
+	check(not w.camera_rig.split, "Fusion merges local views and remains third-person")
+	check(w.camera_rig.distance[0] > 7, "Fusion smoothly pulls camera back")
+	var route_clear = true
+	for z in range(-90, 57):
+		if not w._can_occupy(w.terrain.ground(Vector3(w.terrain.trail_x(z), 0, z)), 1.8): route_clear = false
+	check(route_clear, "Entire marked route is passable by the largest fused slime")
+	check(w.pickups.size() == 15, "Twelve landmark powers plus three exploration caches")
+	var jumping_fusion = w.bodies.values()[0]
+	jumping_fusion.invulnerable = 0
+	jumping_fusion.position.y = w.terrain.elevation(jumping_fusion.position) + 2
+	var hp_before = jumping_fusion.health
+	w.hazards[90000] = {"id": 90000, "position": w.terrain.ground(jumping_fusion.position), "radius": 4,
+		"trigger": w.clock, "expires": w.clock + 2, "kind": "slam", "fired": false}
+	w._update_hazards(0)
+	check(jumping_fusion.health == hp_before, "Jump evades ground slam")
+	jumping_fusion.position.y = w.terrain.elevation(jumping_fusion.position)
+	w.hazards[90000].fired = false
+	w._update_hazards(0)
+	check(jumping_fusion.health == hp_before - 30, "Same slam hits a grounded slime")
 	await process_frame
 	print("ALL ", checks, " GAMEPLAY CHECKS PASSED")
 	quit(0)

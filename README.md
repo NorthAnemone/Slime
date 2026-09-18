@@ -1,77 +1,89 @@
-# Slimebound — build 0.4
+# Slimebound — build 0.5: The Wilds
 
-A Godot 4.3+ 3D co-op dungeon prototype. Two to six players can fuse into a shared creature; **Local Dungeon** runs two players on one keyboard with no IP address, network connection or server.
+A Godot 4.3+ third-person co-op exploration prototype. Follow an outdoor trail from a campsite, through pine groves and uphill ridges, to the Moss Warden's summit. Slimes split to explore and gather powers, then fuse to fight.
 
-## Play the latest version
+![Actual Godot capture of the third-person summit encounter](docs/screenshots/wilds.png)
 
-1. Download this repository's latest ZIP (Code → Download ZIP), or pull `main`.
-2. Extract it into a fresh folder. Import its `project.godot` in Godot 4.3 or newer.
-3. Let Godot finish importing the bundled GLB models and textures, then press **F6** on `scenes/main.tscn` or **F5** for the project.
-4. Confirm the menu says **BUILD 0.4 · THE MOSS WARDEN · CC0 ASSETS**.
-5. Click **PLAY LOCAL DUNGEON — NO IP REQUIRED**, above Host and Join.
+This is a **bounded outdoor level**, not a finished open-world game or a PEAK clone. It has sloped terrain and jumping, but not climbing, procedural islands, swimming, quests, save games or audio yet.
 
-If you still see an older build number, you are opening an older extracted copy. Run the project from the newly downloaded folder.
+## Run the new build
 
-## Shared keyboard
+1. Download the latest repository ZIP and extract it into a **fresh folder**.
+2. Import `project.godot` in Godot 4.3 or newer. Allow the bundled GLB models to import.
+3. Press F5. Confirm the menu says **BUILD 0.5 · THE WILDS · THIRD-PERSON CO-OP**.
+4. Select **PLAY LOCAL DUNGEON — NO IP REQUIRED** for two players on one keyboard. This familiar button now starts the outdoor expedition.
+
+## Camera and local controls
+
+The camera stays **third-person in every form**. Separate local slimes each get a split-screen view. Fusion merges the screens and smoothly pulls the camera back to frame the larger body. Splitting restores two views. Mouse look belongs to player 1; player 2 can orbit using U/O. In the shared fused view, both mouse and U/O turn the camera. Movement is camera-relative.
 
 | Action | Player 1 | Player 2 |
 | --- | --- | --- |
 | Move | WASD | Arrow keys |
-| Aim | Mouse | Automatically toward closest enemy |
-| Attack (fused only) | Left mouse / Space | M |
+| Orbit camera | Mouse | U / O |
+| Jump | Space | Enter |
+| Attack, fused only | Left mouse | M (nearby enemy auto-aim) |
 | Offer fusion | E | N |
 | Split | Q | B |
-| Absorb nearby power (solo only) | F | L |
-| Restart run | R (host) | — |
+| Collect nearby power, solo only | F | L |
+| Release / capture mouse | Tab | Tab |
+| Restart expedition | R (host) | — |
 | Return to menu | Escape | Escape |
 
-Stand close and press **E and N within three seconds** to fuse. Every member must offer consent when merging larger groups. Both players steer the shared body: agreeing moves it at full speed; opposite inputs cancel. Either player may split. The local camera keeps both slimes visible and follows the shared body after fusion.
+Stand close and offer fusion within three seconds of each other. Both players steer the shared body: opposing movement cancels out; an idle partner reduces speed. Every member must consent to larger online fusions. Any member can split.
 
-## The full level
+Space now jumps; it no longer attacks. Mouse look aims player 1's ground-following spell attacks. These are not free-aim vertical projectiles.
 
-- **The Nursery:** safe place to learn movement, collect powers, and fuse. Walk north together through the arch.
-- **Root Gallery:** four pursuing enemies. Solo trails slow them; fuse to defeat them and unlock the north exit.
-- **Crucible Hall:** six enemies, including tougher brutes. New power pedestals allow different combinations.
-- **Moss Warden:** a 1,400-HP boss with delayed ground slams, radial projectile volleys, summoned crawlers, and a faster second phase below half health. Move out of the red warnings before they fire. Defeat it, fuse, and enter the Heart Gate to complete the level.
+## Explore the route
 
-Each chamber is a checkpoint. If a slime is defeated, the party reforms at that chamber with its collected powers intact and the encounter resets. R starts a fresh run. Room transitions reform the party as solo slimes so you can change powers before the next fight.
+- **Trailhead:** campsite, movement practice and three replenishing power pickups.
+- **Whispering Grove:** follow the winding trail uphill and approach the ruined landmark **while fused** to begin a four-enemy encounter.
+- **Sunlit Ridge:** after clearing the grove, continue to the second landmark and its six-enemy encounter.
+- **Warden Summit:** after the ridge, reach the final clearing to awaken the 1,400-HP Moss Warden. It has telegraphed slams, radial volleys, summoned crawlers and a faster second phase below half health.
+- **Summit arch:** defeat the Warden and enter the arch together to finish.
 
-## Solo and fusion rules
+There are no room gates or transition teleports. You can wander and backtrack throughout the valley, but encounters activate in order and require a fused party. Three extra power caches lie off the trail. Distant mountain meshes are scenery, not additional playable regions.
 
-Solo slimes **cannot deal damage**, even with a power equipped. Moving leaves a seven-second trail that slows ordinary enemies by 55% and the boss by 30%. Solo slimes are faster and can absorb one power at a time; collecting another replaces it. Pedestals replenish after one second, so both players can choose the same element.
+Jump or move out of red ground-slam warnings. Terrain climbs 8.4 metres between trailhead and summit. Trees and landmark boulders block movement; the camera pulls in around them. Decorative foliage is non-colliding.
 
-Fusion gives the team a larger body with arms and legs and enables close-range strikes. Collected powers also enable ranged attacks. Splitting keeps powers and the current health percentage; it does not heal you.
+Defeat reforms the team at its latest active landmark, retaining powers and resetting that encounter. R resets the expedition, powers and score.
 
-| Power selection | Fused effect |
+## Slime abilities
+
+Solo slimes cannot damage enemies. Moving on the ground leaves a seven-second trail: ordinary enemies move 55% slower on it, and the Warden moves 30% slower. Solo slimes move faster and carry one power. Collecting another replaces it; pickups replenish after one second.
+
+Fusion uses an existing animated limbed creature model, enables melee strikes and activates equipped powers. Splitting retains each player's power and health percentage; it does not heal them.
+
+| Equipped powers | Fused effect |
 | --- | --- |
 | Ember | Added impact damage and burning |
 | Frost | Added impact damage and slowing |
 | Storm | Added impact damage and chain damage |
-| Same element twice | Double that element's added damage; double burn/chain damage or frost duration |
-| Ember + Frost | **Frostfire:** burning impact and slowing splash |
-| Ember + Storm | **Plasma:** splash plus burning chain attacks |
-| Frost + Storm | **Blizzard:** slowing chain attacks |
-| All three (3+ online players) | **Tempest:** burn, frost, chain and splash |
+| Two of the same | Double elemental damage; double burn/chain damage or frost duration |
+| Ember + Frost | Frostfire: burning impact and slowing splash |
+| Ember + Storm | Plasma: splash and burning chains |
+| Frost + Storm | Blizzard: slowing chains |
+| All three, 3+ players | Tempest: burn, frost, chain and splash |
 
-Matching-power scaling applies to the elemental portion, not the underlying physical strike. Larger groups can stack additional copies. There is no friendly fire.
+Matching powers multiply the elemental portion, not the physical base strike. No friendly fire.
 
 ## Online play
 
-Host opens UDP port **7777**; other players join the host's reachable IP. Across the internet the host may need port forwarding. There is no matchmaking or relay. Local Dungeon never opens a port. The host owns movement, collision, powers, enemies, boss attacks, checkpoints and victory; clients send inputs and receive authoritative snapshots.
+Host/Join supports up to six players on UDP **7777**. Internet play may need port forwarding; there is no relay or matchmaking. Each online player has a third-person orbit camera, including when controlling a shared fused body. The host simulates movement, powers, enemies, progression and victory. Local Dungeon never opens a server port.
 
-## Public artwork only
+## Public assets only
 
-Models and visual-effect textures are bundled CC0 assets by **Kenney** and **Quaternius**. See [ASSET_CREDITS.md](ASSET_CREDITS.md) for original links and license files. The fused form uses Quaternius's existing animated Yeti as a limbed creature stand-in; no custom slime artwork was made. The boss uses the existing Mushroom King. The previous procedural character/environment meshes and custom icon have been removed.
+All model and effect art is bundled CC0 work by Kenney and Quaternius. The outdoor environment uses **Kenney Nature Kit**. Layout, asset transforms, engine material palette/roughness adjustments, standard sky, fog and lighting are configured in code. No custom artwork meshes or textures were created.
 
-## Verification
+The fused form remains Quaternius's stock **Yeti**, used as a limbed stand-in—not a bespoke humanoid slime. The Warden uses **Mushroom King**. See [ASSET_CREDITS.md](ASSET_CREDITS.md) and the included license files.
 
-Run from the project folder:
+## Developer checks
 
 ```sh
 godot --headless --editor --import --quit
 godot --headless --script res://tests/gameplay_test.gd
 ```
 
-For the two-process networking check, start `godot --headless --script res://tests/network_test.gd -- --server`, then start `godot --headless --script res://tests/network_test.gd` in another terminal within one second.
+The gameplay test covers solo restrictions, trails, powers, fusion, boss phases, victory, jumping, terrain, a clear traversal route, split-screen and fused third-person framing. Godot 4.3's dummy renderer may print `mesh_get_surface_count` during resource cleanup; check the test results and exit status for failures.
 
-This is a playable prototype, not a finished commercial game: four chambers, simple enemy pursuit, one boss, and no saved progression or audio yet. Difficulty and internet latency need real-player playtesting.
+For networking, run `godot --headless --script res://tests/network_test.gd -- --server`, then launch `godot --headless --script res://tests/network_test.gd` in another terminal within one second. For rendered captures, run `godot --script res://tests/visual_check.gd`; images go to `user://screenshots` unless `SLIME_SCREENSHOT_DIR` is set.
