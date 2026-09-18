@@ -42,6 +42,7 @@ func run() -> void:
 	w._action(1, "collect")
 	check(w.players[1].element == "Ember", "Solo collects Ember")
 	w.clock = 2.0
+	w.pickups.values()[3].position = ember.position + Vector3(1, 0, 0)
 	b2.position = ember.position + Vector3(1, 0, 0)
 	w._action(2, "collect")
 	w._action(1, "fuse")
@@ -136,7 +137,7 @@ func run() -> void:
 	for z in range(-90, 57):
 		if not w._can_occupy(w.terrain.ground(Vector3(w.terrain.trail_x(z), 0, z)), 1.8): route_clear = false
 	check(route_clear, "Entire marked route is passable by the largest fused slime")
-	check(w.pickups.size() == 15, "Twelve landmark powers plus three exploration caches")
+	check(w.pickups.size() == 5, "Five finite exploration powers")
 	var jumping_fusion = w.bodies.values()[0]
 	jumping_fusion.invulnerable = 0
 	jumping_fusion.position.y = w.terrain.elevation(jumping_fusion.position) + 2

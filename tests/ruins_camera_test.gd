@@ -57,7 +57,7 @@ func run() -> void:
 	w._next_map()
 	check(w.map_index == 1 and w.stage == 0 and not w.complete,"Completed first map unlocks Amber Ruins")
 	check(w.party_level == 3 and w.players[1].elements == ["Ember","Frost"],"Map travel retains levels and inventories")
-	check(w.pickups.size() == 23,"Second map provides five powers at each landmark and three caches")
+	check(w.pickups.size() == 6,"Second map contains six finite power finds")
 	var route_clear=true
 	for z in range(-90,57):
 		if not w._can_occupy(w.terrain.ground(Vector3(w.terrain.trail_x(z),0,z)),1.8):route_clear=false
@@ -88,6 +88,6 @@ func run() -> void:
 	w._progress()
 	check(w.complete,"Second map exit completes expedition")
 	w._restart()
-	check(w.map_index == 0 and w.party_level == 1 and w.pickups.size() == 15,"Restart returns to first map with a fresh expedition")
+	check(w.map_index == 0 and w.party_level == 1 and w.pickups.size() == 5,"Restart returns to first map with a fresh expedition")
 	print("ALL ",checks," RUINS AND CAMERA CHECKS PASSED")
 	quit(1 if failed else 0)

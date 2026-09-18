@@ -18,6 +18,10 @@ var plate_visuals: Array = []
 var puzzle_gate: Node3D
 var puzzle_open = false
 var puzzle_charge = 0.0
+var rune_states = [2,0,1]
+var clues_found = 0
+var rune_labels: Array = []
+const RUNE_NAMES = ["SUN", "LEAF", "MOON"]
 var map_index = 0
 var camera_rig: Node
 var cleared = [true, false, false, false]
@@ -86,18 +90,17 @@ func setup_local_coop(first_name: String, second_name: String) -> void:
 	_apply(_snapshot())
 
 func _start() -> void:
-	for room in 4:
-		var available = ["Ember", "Frost", "Storm"] if map_index == 0 else ELEMENTS.keys()
-		for i in available.size():
-			var key = available[i]
-			var id = _id()
-			pickups[id] = {"id": id, "position": terrain.ground(terrain.LANDMARKS[room] + Vector3((i - (available.size() - 1) / 2.0) * 3, 0, 5)),
-				"element": key, "ready": 0.0, "room": room}
-	for i in 3:
+	# Finite, shared finds off the main route; no replenishing power stations.
+	var positions = [Vector3(-22,0,36),Vector3(32,0,26),Vector3(-34,0,-3),Vector3(32,0,-42),Vector3(-30,0,-70)]
+	var elements = ["Ember","Frost","Storm","Ember","Frost"]
+	if map_index == 1:
+		positions = [Vector3(-22,0,36),Vector3(-36,0,22),Vector3(35,0,-3),Vector3(-35,0,-34),Vector3(32,0,-42),Vector3(-26,0,-76)]
+		elements = ["Venom","Gale","Storm","Frost","Venom","Ember"]
+	for i in positions.size():
+		var pos = positions[i]
+		pos.y = _floor_height(Vector3(pos.x,100,pos.z))
 		var id = _id()
-		var cache_pos = [Vector3(-22, 0, 36), Vector3(36, 0, -3), Vector3(-30, 0, -48)][i]
-		pickups[id] = {"id": id, "position": Vector3(cache_pos.x, _floor_height(Vector3(cache_pos.x,100,cache_pos.z)), cache_pos.z),
-			"element": (["Ember", "Frost", "Storm"] if map_index == 0 else ["Venom", "Gale", "Venom"])[i], "ready": 0.0, "room": -1}
+		pickups[id] = {"id":id,"position":pos,"element":elements[i],"ready":0.0,"room":-1,"claimed":false}
 
 func _id() -> int:
 	var id = next_id
@@ -109,7 +112,7 @@ func _add_player(peer_id: int, player_name: String) -> void:
 		return
 	players[peer_id] = {"id": peer_id, "name": player_name.left(18), "color": COLORS[players.size() % 6],
 		"body_id": 0, "score": 0, "element": "", "elements": [], "offer": 0.0, "last_input": clock,
-		"move": Vector2.ZERO, "aim": Vector2.UP, "attack": false, "sprint": false, "shot": 0.0}
+		"move": Vector2.ZERO, "aim": Vector2.UP, "attack": false, "weapon": "Sword", "sprint": false, "climb": false, "shot": 0.0}
 	_solo(peer_id, Vector3(-2 + players.size() * 1.7, 0, CENTERS[stage] + 8), 1.0)
 
 func _solo(peer_id: int, pos: Vector3, ratio: float) -> void:
@@ -117,7 +120,7 @@ func _solo(peer_id: int, pos: Vector3, ratio: float) -> void:
 	var id = _id()
 	bodies[id] = {"id": id, "members": [peer_id], "position": pos, "radius": 0.7,
 		"health": maxf(1, _member_health() * ratio), "max_health": _member_health(), "color": players[peer_id].color,
-		"velocity": Vector3.ZERO, "sprinting": false, "vertical_speed": 0.0, "jump_buffer": 0.0, "coyote": 0.1, "jump_cut": false, "land_squash": 0.0, "next_trail": 0.0, "invulnerable": clock + 1.5, "swing": 0.0, "facing": Vector2.UP}
+		"stamina": 100.0, "climbing": false, "velocity": Vector3.ZERO, "sprinting": false, "vertical_speed": 0.0, "jump_buffer": 0.0, "coyote": 0.1, "jump_cut": false, "land_squash": 0.0, "next_trail": 0.0, "invulnerable": clock + 1.5, "swing": 0.0, "attack_style": "Sword", "facing": Vector2.UP}
 	players[peer_id].body_id = id
 
 @rpc("any_peer", "call_remote", "reliable")
@@ -126,9 +129,9 @@ func register_player(player_name: String) -> void:
 		_add_player(multiplayer.get_remote_sender_id(), player_name.strip_edges())
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
-func submit_input(move: Vector2, aim: Vector2, attack: bool, sprint: bool = false) -> void:
+func submit_input(move: Vector2, aim: Vector2, attack: bool, sprint: bool = false, climb: bool = false) -> void:
 	if is_host and move.is_finite() and aim.is_finite():
-		_set_input(multiplayer.get_remote_sender_id(), move, aim, attack, sprint)
+		_set_input(multiplayer.get_remote_sender_id(), move, aim, attack, sprint, climb)
 
 @rpc("any_peer", "call_remote", "reliable")
 func action(kind: String) -> void:
@@ -154,7 +157,7 @@ func _message(message: String) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.echo:
 		return
-	for kind in ["fuse", "split", "collect", "jump"]:
+	for kind in ["fuse", "split", "collect", "jump", "weapon"]:
 		if event.is_action_pressed(kind):
 			if is_host:
 				_action(local_peer_id, kind)
@@ -179,6 +182,9 @@ func _action(peer_id: int, kind: String) -> void:
 		return
 	var body = bodies[p.body_id]
 	match kind:
+		"weapon":
+			p.weapon = ["Sword","Bow","Magic"][( ["Sword","Bow","Magic"].find(p.weapon) + 1) % 3]
+			_message("%s · %s equipped" % [p.name,p.weapon])
 		"jump":
 			body.jump_buffer = 0.14
 			body.jump_cut = false
@@ -193,35 +199,38 @@ func _action(peer_id: int, kind: String) -> void:
 			if body.members.size() > 1:
 				_split(body)
 		"collect":
+			if _interact_runes(body): return
 			if body.members.size() > 1:
 				_message("Split first! Only solo slimes absorb power.")
 				return
 			for item in pickups.values():
-				if item.ready <= clock and _distance(item, body) < 2.3:
+				if not item.get("claimed",false) and _distance(item, body) < 2.3:
 					if p.elements.size() >= _power_capacity(): p.elements.pop_front()
 					p.elements.append(item.element)
 					p.element = " + ".join(p.elements)
 					if item.room == -1: _award_xp(35, "map%d:cache:%d" % [map_index, item.id])
-					item.ready = clock + 1.0
+					item.claimed = true
+					item.ready = INF
 					_message("%s absorbed %s. Trail empowered; fuse for full strength!" % [p.name, p.element])
 					break
 
-func _set_input(peer_id: int, move: Vector2, aim: Vector2, attack: bool, sprint: bool = false) -> void:
+func _set_input(peer_id: int, move: Vector2, aim: Vector2, attack: bool, sprint: bool = false, climb: bool = false) -> void:
 	if players.has(peer_id):
 		var p = players[peer_id]
 		p.move = move.limit_length()
 		p.aim = aim.normalized() if aim.length_squared() > 0.01 else Vector2.UP
 		p.attack = attack
 		p.sprint = sprint
+		p.climb = climb
 		p.last_input = clock
 
 func _read_inputs() -> void:
 	var move = camera_rig.movement(Input.get_vector("move_left", "move_right", "move_up", "move_down"), 0)
 	var aim = _mouse_aim()
 	if is_host:
-		_set_input(local_peer_id, move, aim, Input.is_action_pressed("attack"), Input.is_action_pressed("sprint"))
+		_set_input(local_peer_id, move, aim, Input.is_action_pressed("attack"), Input.is_action_pressed("sprint"), Input.is_action_pressed("climb"))
 	else:
-		submit_input.rpc_id(1, move, aim, Input.is_action_pressed("attack"), Input.is_action_pressed("sprint"))
+		submit_input.rpc_id(1, move, aim, Input.is_action_pressed("attack"), Input.is_action_pressed("sprint"), Input.is_action_pressed("climb"))
 	if local_coop and players.has(2):
 		var move2 = camera_rig.movement(Input.get_vector("p2_move_left", "p2_move_right", "p2_move_up", "p2_move_down"), 1)
 		var body = bodies[players[2].body_id]
@@ -231,7 +240,7 @@ func _read_inputs() -> void:
 			var d = target.position - body.position
 			aim2 = Vector2(d.x, d.z).normalized()
 
-		_set_input(2, move2, aim2, Input.is_action_pressed("p2_attack"), Input.is_action_pressed("p2_sprint"))
+		_set_input(2, move2, aim2, Input.is_action_pressed("p2_attack"), Input.is_action_pressed("p2_sprint"), Input.is_action_pressed("p2_climb"))
 
 func _physics_process(delta: float) -> void:
 	if not is_host and multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
@@ -275,7 +284,15 @@ func _simulate(delta: float) -> void:
 				_attack(p, body)
 		# Idle allies no longer halve speed; opposing active inputs still cancel.
 		move /= float(maxi(1, moving_members))
-		var sprinting = sprinting_members > 0 and move.length_squared() > 0.01
+		var wants_sprint = sprinting_members > 0 and move.length_squared() > 0.01
+		var wants_climb = body.members.size() == 1 and players[body.members[0]].climb
+		var climbing = wants_climb and body.stamina > 1 and _climbable(body.position, body.radius)
+		body.climbing = climbing
+		var sprinting = wants_sprint and body.stamina > 1 and not climbing
+		if climbing: body.stamina = maxf(0,body.stamina-28*delta)
+		elif sprinting: body.stamina = maxf(0,body.stamina-18*delta)
+		elif not wants_sprint and not wants_climb and body.position.y <= _floor_height(body.position)+0.1:
+			body.stamina = minf(100,body.stamina+24*delta)
 		body.sprinting = sprinting
 		var speed = (9.0 if body.members.size() == 1 else 7.6) * (1.7 if sprinting else 1.0)
 		var ground_powers = _trail_powers(body.position, body.radius)
@@ -293,7 +310,8 @@ func _simulate(delta: float) -> void:
 		body.jump_buffer = maxf(0, body.jump_buffer - delta)
 		body.coyote = maxf(0, body.coyote - delta)
 		body.land_squash = maxf(0, body.land_squash - delta)
-		body.vertical_speed -= (38.0 if body.vertical_speed < 0 else 25.0) * delta
+		if climbing: body.vertical_speed = 3.4
+		else: body.vertical_speed -= (38.0 if body.vertical_speed < 0 else 25.0) * delta
 		body.position.y += body.vertical_speed * delta
 		var floor_y = _floor_height(body.position, before.y)
 		for slab in platforms:
@@ -361,19 +379,31 @@ func _power_name(body: Dictionary) -> String:
 	return "FUSED · GEL FISTS"
 
 func _attack(p: Dictionary, body: Dictionary) -> void:
-	p.shot = clock + 0.65
-	body.swing = clock + 0.22
-	var powers = _powers(body)
-	var damage = 14.0 + body.members.size() * 5.0
-	var target = _nearest(body.position, enemies)
-	if not target.is_empty() and _distance(body, target) <= body.radius + target.radius + 2.0:
-		_hit(target.id, damage, powers)
-	if not powers.is_empty():
-		var id = _id()
-		var aim = Vector3(p.aim.x, 0, p.aim.y)
-		shots[id] = {"id": id, "position": body.position + aim * (body.radius + 0.35),
-			"velocity": aim * 23, "damage": damage, "powers": powers,
-			"expires": clock + 1.8, "color": ELEMENTS[powers.keys()[0]], "enemy": false}
+	if body.members.size() < 2: return
+	var style = p.weapon
+	var powers = _powers(body) if style == "Magic" else {}
+	if style == "Magic" and powers.is_empty():
+		p.shot = clock + 0.8
+		_message("Magic needs an element. Switch to Sword or Bow (X / J).")
+		return
+	p.shot = clock + (0.48 if style == "Sword" else (0.8 if style == "Bow" else 1.05))
+	body.swing = clock + 0.25
+	body.attack_style = style
+	body.facing = p.aim
+	var aim = Vector3(p.aim.x,0,p.aim.y)
+	if style == "Sword":
+		# A short forward cleave, not an automatic hit behind the player.
+		for enemy in enemies.values():
+			var offset = enemy.position-body.position
+			if offset.length() <= body.radius+enemy.radius+1.8 and aim.dot(offset.normalized()) > 0.15:
+				_hit(enemy.id,26.0+body.members.size()*4,{})
+		_effect(body.position+aim*1.8,1.3,Color("fff2b0"),0.15)
+		return
+	var id = _id()
+	shots[id] = {"id":id,"position":body.position+aim*(body.radius+0.35),
+		"velocity":aim*(32 if style == "Bow" else 20),"damage":30.0 if style == "Bow" else 18.0,
+		"powers":powers,"expires":clock+(2.2 if style == "Bow" else 1.5),
+		"color":Color("ffe6aa") if style == "Bow" else ELEMENTS[powers.keys()[0]],"enemy":false,"style":style}
 
 func _hit(enemy_id: int, damage: float, powers: Dictionary) -> void:
 	if not enemies.has(enemy_id):
@@ -484,6 +514,7 @@ func _check_fusion() -> void:
 			first.position = pos
 			first.radius = radius
 			first.velocity = (first.velocity + second.velocity) * 0.5
+			first.stamina = minf(first.stamina,second.stamina)
 			first.max_health = _member_health() * members.size()
 			first.health = first.max_health * ratio
 			first.invulnerable = clock + 0.5
@@ -504,6 +535,7 @@ func _split(body: Dictionary) -> void:
 			pos = body.position
 		_solo(members[i], pos, ratio)
 		bodies[players[members[i]].body_id].velocity = body.velocity
+		bodies[players[members[i]].body_id].stamina = body.stamina
 		bodies[players[members[i]].body_id].transition = {"kind": "split", "at": clock, "origin": body.position}
 	# No healing, recharge or replacement powers when splitting.
 
@@ -663,6 +695,9 @@ func _restart() -> void:
 		_load_map(0)
 		pickups.clear()
 		_start()
+	for item in pickups.values():
+		item.claimed = false
+		item.ready = 0.0
 	party_level = 1
 	party_xp = 0
 	xp_claims.clear()
@@ -758,8 +793,8 @@ func _snapshot() -> Dictionary:
 	var roster = []
 	for p in players.values():
 		var body = bodies.get(p.body_id, {})
-		roster.append({"id": p.id, "name": p.name, "color": p.color, "score": p.score, "element": p.element, "elements": _carried_powers(p), "capacity": _power_capacity(),
-			"health": body.get("health", 0), "max_health": body.get("max_health", 70)})
+		roster.append({"id": p.id, "name": p.name, "color": p.color, "score": p.score, "element": p.element, "elements": _carried_powers(p), "capacity": _power_capacity(), "weapon": p.weapon,
+			"stamina": body.get("stamina",100), "climbing": body.get("climbing",false), "health": body.get("health", 0), "max_health": body.get("max_health", 70)})
 	var body_array = []
 	for b in bodies.values():
 		var copy = b.duplicate(true)
@@ -769,7 +804,7 @@ func _snapshot() -> Dictionary:
 		for id in b.members:
 			copy.offering = copy.offering or players[id].offer > clock
 		body_array.append(copy)
-	return {"clock": clock, "map_index": map_index, "puzzle_open": puzzle_open, "puzzle_charge": puzzle_charge, "party_level": party_level, "party_xp": party_xp, "xp_needed": _xp_needed(), "stage": stage, "cleared": cleared, "victory": victory, "complete": complete, "players": roster,
+	return {"clock": clock, "map_index": map_index, "puzzle_open": puzzle_open, "puzzle_charge": puzzle_charge, "rune_states": rune_states.duplicate(), "clues_found": clues_found, "party_level": party_level, "party_xp": party_xp, "xp_needed": _xp_needed(), "stage": stage, "cleared": cleared, "victory": victory, "complete": complete, "players": roster,
 		"bodies": body_array, "enemies": enemies.values().duplicate(true), "trails": trails.values().duplicate(true),
 		"pickups": pickups.values().duplicate(true), "shots": shots.values().duplicate(true), "hazards": hazards.values().duplicate(true)}
 
@@ -778,6 +813,8 @@ func _apply(data: Dictionary) -> void:
 	state = data
 	puzzle_open = data.get("puzzle_open", false)
 	puzzle_charge = data.get("puzzle_charge", 0.0)
+	rune_states = data.get("rune_states",[2,0,1]).duplicate()
+	clues_found = data.get("clues_found",0)
 	var body = _local_body()
 	if not body.is_empty():
 		local_stats_changed.emit(body.health, body.max_health, body.members.size(), 0, data.enemies.size(), 1, data.victory)
@@ -790,13 +827,13 @@ func _apply(data: Dictionary) -> void:
 			boss_max = e.max_health
 	var objective = "Travel fused along the trail to " + ROOMS[mini(3, data.stage + 1)] + "."
 	if data.stage == 0:
-		objective = "Collect powers (F / L). Fuse near your ally (E + N). Follow the uphill trail."
+		objective = "Explore side paths for rare powers. Fuse (E + N); Sword and Bow need no powers."
 	elif not data.enemies.is_empty():
 		objective = "Defend this landmark · %d enemies remain." % data.enemies.size()
 	if data.stage == 3 and not data.victory:
 		objective = ("Moss Warden" if map_index == 0 else "Amber Warden") + " · dodge red warnings; jump to evade ground slams."
 	if map_index == 1 and data.stage == 1 and data.enemies.is_empty() and not puzzle_open:
-		objective = "Split. Hold both seals under the low roofs for 1 second · %d%%" % int(puzzle_charge * 100)
+		objective = "Read both hidden inscriptions (F/L), order the rune dials, then fuse to turn the lock."
 	if data.victory: objective = "Reach the summit arch together."
 	if data.complete: objective = ("MAP CLEAR · F8: enter Amber Ruins · R: restart" if map_index == 0 else "BOTH MAPS CLEARED · R: restart expedition")
 	encounter_changed.emit({"title": ("THE WILDS · " if map_index == 0 else "AMBER RUINS · ") + ROOMS[data.stage], "objective": objective, "boss_health": boss_health,
@@ -822,7 +859,7 @@ func _process(delta: float) -> void:
 		aim_marker.visible = body.members.size() > 1
 	portal.visible = state.victory
 	if is_instance_valid(puzzle_gate): puzzle_gate.scale.y = lerpf(puzzle_gate.scale.y, 0.1 if puzzle_open else 1.0, 1-exp(-delta*5))
-	for plate in plate_visuals: plate.modulate = Color("72ef9b") if puzzle_open else Color("ffd66d").lerp(Color.WHITE,puzzle_charge)
+	for i in rune_labels.size(): rune_labels[i].text = "%d · %s" % [i+1,RUNE_NAMES[rune_states[i]]]
 
 # All visuals instantiate public CC0 assets; only their layout and transforms are authored.
 var asset_cache: Dictionary = {}
@@ -865,6 +902,7 @@ func _asset(parent: Node3D, path: String, pos: Vector3, size: Vector3) -> Node3D
 	var bounds = _bounds(model, Transform3D.IDENTITY)
 	var extent = bounds.size
 	model.scale = Vector3.ONE * (size.y / maxf(0.001, extent.y)) if path.begins_with("quaternius/") else size / Vector3(maxf(0.001, extent.x), maxf(0.001, extent.y), maxf(0.001, extent.z))
+	if path.begins_with("weapons/"): model.scale = Vector3.ONE * size.y / maxf(0.001,maxf(extent.x,maxf(extent.y,extent.z)))
 	model.position = -Vector3(bounds.get_center().x, bounds.position.y, bounds.get_center().z) * model.scale
 	return holder
 
@@ -944,7 +982,13 @@ func _render_entities(delta: float) -> void:
 				"bodies":
 					var fused = data.members.size() > 1
 					var face = data.facing
-					visual.get_node("Model").rotation.y = lerp_angle(visual.get_node("Model").rotation.y, atan2(face.x, face.y), minf(1, delta * 8))
+					if fused:
+						var weapons = visual.get_node("Weapons")
+						weapons.rotation.y = atan2(face.x,face.y)
+						weapons.get_node("Sword").visible = data.attack_style == "Sword"
+						weapons.get_node("Bow").visible = data.attack_style == "Bow"
+						weapons.get_node("Sword").rotation.z = -0.4 - sin(clampf((data.swing-state.clock)/0.25,0,1)*PI)*1.2
+					visual.get_node("Model").rotation.y = lerp_angle(visual.get_node("Model").rotation.y, atan2(face.x, face.y) + (-PI / 2 if fused else 0), minf(1, delta * 8))
 					visual.get_node("Name").text = ("FUSED  %d/%d" % [data.health, data.max_health]) if fused else "P%d" % data.members[0]
 					visual.get_node("Offer").visible = data.offering
 					visual.get_node("Power").text = ""
@@ -973,7 +1017,7 @@ func _render_entities(delta: float) -> void:
 					visual.get_node("Name").text = "POISONED" if data.poison_until > state.clock else ("SLOWED" if data.slow else "")
 					_animate(visual, "Walk" if moving else "Idle")
 				"pickups":
-					visual.visible = data.ready <= state.clock
+					visual.visible = not data.get("claimed",false)
 					visual.get_node("Crystal").rotation.y += delta * 1.7
 				"trails":
 					visual.scale = Vector3.ONE * clampf((data.expires - state.clock) / 2, 0.1, 1.0)
@@ -997,6 +1041,12 @@ func _make_visual(kind: String, data: Dictionary) -> Node3D:
 			if not is_body and data.kind in ["skeleton", "bat"]: model = data.kind
 			var height = 1.85 if fused else (5.0 if boss else (2.0 if not is_body and data.kind == "skeleton" else 1.4))
 			_asset(root, "quaternius/" + model + ".glb", Vector3.ZERO, Vector3(data.radius * 2, height, data.radius * 2)).name = "Model"
+			if fused:
+				var weapons = Node3D.new()
+				weapons.name = "Weapons"
+				root.add_child(weapons)
+				_asset(weapons,"weapons/sword.glb",Vector3(0.85,0.7,0),Vector3(1,1.7,1)).name = "Sword"
+				_asset(weapons,"weapons/bow.glb",Vector3(1.05,0.85,0.5),Vector3(1,1.5,1)).name = "Bow"
 			_label3d(root, Vector3(0, height + 0.4, 0), "").name = "Name"
 			if is_body:
 				_label3d(root, Vector3(0, height + 1, 0), "", 22).name = "Power"
@@ -1005,6 +1055,10 @@ func _make_visual(kind: String, data: Dictionary) -> Node3D:
 		"trails":
 			_decal(root, "smoke_01", 1.05, Color(data.color, 0.7), 0.025 + (int(data.id) % 8) * 0.001)
 		"shots":
+			if data.get("style","") == "Bow":
+				var arrow = _asset(root,"weapons/arrow.glb",Vector3(0,0.8,0),Vector3(1,1.6,1))
+				arrow.rotation = Vector3(PI/2,atan2(data.velocity.x,data.velocity.z),0)
+				return root
 			# Alpha discard keeps the licensed silhouette but makes every visible
 			# pixel opaque and depth-writing, instead of a translucent puff.
 			var solid = _asset(root, "nature/rock_largeA.glb", Vector3(0,0.45,0), Vector3(0.85,0.85,0.85))
@@ -1105,6 +1159,9 @@ func _load_map(index: int) -> void:
 	plate_visuals.clear()
 	puzzle_open = false
 	puzzle_charge = 0
+	rune_states = [2,0,1]
+	clues_found = 0
+	rune_labels.clear()
 	snapshot_frames.clear()
 	_build_level()
 
@@ -1177,7 +1234,7 @@ func _begin_transform_visual(visual: Node3D, data: Dictionary) -> void:
 		visual.add_child(ghost)
 		ghost.position = source.position - data.position
 		var model = _asset(ghost, "quaternius/fusion.glb" if source.fused else "quaternius/slime.glb", Vector3.ZERO, Vector3.ONE * (1.85 if source.fused else 1.4))
-		model.rotation.y = atan2(data.facing.x, data.facing.y)
+		model.rotation.y = atan2(data.facing.x, data.facing.y) + (-PI / 2 if source.fused else 0)
 		var pull = ghost.create_tween().set_parallel(true)
 		pull.tween_property(ghost, "position", Vector3.ZERO, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		pull.tween_property(ghost, "scale", Vector3(0.1, 0.3, 0.1), 0.22)
@@ -1190,19 +1247,32 @@ func _floor_height(pos: Vector3, previous_y: float = -INF) -> float:
 			height = maxf(height,slab.top)
 	return height
 
-func _update_puzzle(delta: float) -> void:
-	if map_index != 1 or puzzle_open: return
-	var occupied = 0
-	for plate in plates:
-		for body in bodies.values():
-			if body.members.size() == 1 and body.position.distance_to(plate) < 1.5:
-				occupied += 1
-				break
-	puzzle_charge = minf(1, puzzle_charge + delta) if occupied == 2 else 0.0
-	if puzzle_charge >= 1:
-		puzzle_open = true
-		_award_xp(80,"map1:twin_seals")
-		_message("TWIN SEALS OPEN · regroup and fuse to reach Pillar Pass!")
+func _update_puzzle(_delta: float) -> void:
+	pass # Rune puzzle advances only through deliberate interactions.
+
+func _interact_runes(body: Dictionary) -> bool:
+	if map_index != 1 or puzzle_open: return false
+	for i in plates.size():
+		if body.members.size() == 1 and body.position.distance_to(plates[i]) < 2:
+			clues_found |= 1 << i
+			_message("WEST INSCRIPTION: SUN is before LEAF." if i == 0 else "EAST INSCRIPTION: MOON is last. Each symbol appears once.")
+			return true
+	for i in 3:
+		var pos = terrain.ground(Vector3(-5+i*5,0,-15))
+		if body.position.distance_to(pos) < 2.2:
+			rune_states[i] = (rune_states[i]+1)%3
+			_message("Dial %d: %s" % [i+1,RUNE_NAMES[rune_states[i]]])
+			return true
+	if body.position.distance_to(terrain.ground(Vector3(terrain.trail_x(-20),0,-20))) < 3:
+		if body.members.size() < 2: _message("The final lock is heavy. Fuse to turn it.")
+		elif clues_found != 3: _message("Two inscriptions are missing. Explore both solo passages.")
+		elif rune_states != [0,1,2]: _message("The lock rejects this order. Recheck the inscriptions.")
+		else:
+			puzzle_open = true
+			_award_xp(80,"map1:rune_lock")
+			_message("RUNE LOCK OPEN · continue to Pillar Pass!")
+		return true
+	return false
 
 func _skeleton_attack(enemy: Dictionary, target: Dictionary) -> void:
 	if enemy.cast_at > 0 and clock >= enemy.cast_at:
@@ -1224,3 +1294,11 @@ func _solid_projectile_material(node: Node, color: Color) -> void:
 		material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 		node.material_override = material
 	for child in node.get_children(): _solid_projectile_material(child,color)
+
+func _climbable(pos: Vector3, radius: float) -> bool:
+	var point = Vector2(pos.x,pos.z)
+	for slab in platforms:
+		if pos.y >= slab.top + 0.12 or pos.y < slab.bottom - 0.3: continue
+		var nearest = Vector2(clampf(point.x,slab.rect.position.x,slab.rect.end.x),clampf(point.y,slab.rect.position.y,slab.rect.end.y))
+		if point.distance_to(nearest) < radius+0.75 and not slab.rect.has_point(point): return true
+	return false

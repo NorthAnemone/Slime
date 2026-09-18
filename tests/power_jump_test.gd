@@ -28,6 +28,7 @@ func run() -> void:
 	w._action(1,"collect")
 	check(w.players[1].elements == ["Frost","Storm"], "Full inventory replaces oldest power")
 	items[2].ready = 0
+	items[2].claimed = false # Fixture supplies a second Storm find to verify stacking.
 	w._action(1,"collect")
 	check(w.players[1].elements == ["Storm","Storm"], "Same power can occupy both slots")
 	w.bodies[w.players[2].body_id].position = b.position + Vector3.RIGHT

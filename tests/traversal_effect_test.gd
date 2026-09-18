@@ -30,7 +30,7 @@ func run() -> void:
 	check(not w.puzzle_open,"One slime cannot solve both seals")
 	second.position=w.plates[1]
 	w._update_puzzle(1)
-	check(w.puzzle_open and w._snapshot().puzzle_open,"Two solo slimes unlock puzzle and replicate state")
+	check(not w.puzzle_open,"Standing on old seals no longer solves puzzle")
 	w._reset_party()
 	w._action(1,"fuse")
 	w._action(2,"fuse")

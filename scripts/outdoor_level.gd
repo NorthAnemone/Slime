@@ -45,6 +45,9 @@ static func build(w: Node3D) -> void:
 			if Vector2(p.x - mark.x, p.z - mark.z).length() < 13: clear = true
 		for cache_pos in [Vector3(-34, 0, 30), Vector3(36, 0, -3), Vector3(-30, 0, -48)]:
 			if Vector2(p.x - cache_pos.x, p.z - cache_pos.z).length() < 5: clear = true
+		if p.x > 24 and p.x < 43 and p.z < -22 and p.z > -49: clear = true
+		for cache in [Vector3(32,0,26),Vector3(-34,0,-3),Vector3(-30,0,-70),Vector3(-36,0,22),Vector3(35,0,-3),Vector3(-35,0,-34),Vector3(-26,0,-76)]:
+			if Vector2(p.x-cache.x,p.z-cache.z).length() < 5: clear = true
 		if clear: continue
 		var height = rng.randf_range(7, 14)
 		var tree = w._asset(root, "nature/tree_pineTallA.glb" if i % 3 else "nature/tree_pineRoundA.glb", ground(p), Vector3(height * 0.48, height, height * 0.48))

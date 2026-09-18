@@ -32,6 +32,7 @@ func run() -> void:
 	await create_timer(2).timeout
 	await snap("slime-boss.png")
 	w.players[1].aim = Vector2(0.8, -0.6)
+	w.players[1].weapon = "Bow"
 	w._attack(w.players[1], w.bodies.values()[0])
 	await create_timer(0.25).timeout
 	await snap("slime-projectile.png")
@@ -57,6 +58,10 @@ func run() -> void:
 	w.bodies[w.players[2].body_id].position = w.terrain.ground(Vector3(24,0,-2))
 	await create_timer(1).timeout
 	await snap("slime-passages.png")
+	w.bodies[w.players[1].body_id].position = w.terrain.ground(Vector3(30,0,-22))
+	w.bodies[w.players[2].body_id].position = w.terrain.ground(Vector3(35,0,-22))
+	await create_timer(1).timeout
+	await snap("slime-sky-route.png")
 	game.queue_free()
 	await process_frame
 	quit()

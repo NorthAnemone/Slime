@@ -30,3 +30,13 @@ Build 0.9 adds these unmodified, animated CC0 1.0 assets by Quaternius:
 | `assets/quaternius/bat.glb` | [Bat](https://poly.pizza/m/hNO9XvjlKa) | Low-hovering dash enemy |
 
 Individual source/download records are included beside both models. Traversal uses existing Kenney cliff models; transform effects animate the existing slime models and circle sprites. Opaque projectiles reuse Kenney’s rock_largeA mesh with an opaque unshaded material, plus existing smoke sprites with alpha discard. No new projectile artwork was created.
+
+Build 0.10 adds CC0 weapons with original geometry and materials:
+
+| File | Creator and source |
+| --- | --- |
+| `assets/weapons/sword.glb` | [Sword by Quaternius](https://poly.pizza/m/9lLmH8Et4K) |
+| `assets/weapons/arrow.glb` | [Arrow by Quaternius](https://poly.pizza/m/Rt48KEPDGt) |
+| `assets/weapons/bow.glb` | [Bow by CreativeTrio](https://poly.pizza/m/H6vbuPvWtg) |
+
+Source records and CC0 legal text are included in `assets/weapons/`. Weapon placement and swing motion, taller terrace layouts and rune-dial text are configured in Godot; no custom artwork was created.

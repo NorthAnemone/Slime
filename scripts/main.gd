@@ -124,7 +124,7 @@ func _build_interface() -> void:
 	var controls := _label("Solo: leave elemental trails · Collect powers · Fuse for full strength", 12, Color("ffd66d"))
 	controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(controls)
-	var build_label := _label("BUILD 0.9 · THE WILDS · THIRD-PERSON CO-OP", 10, Color("60736d"))
+	var build_label := _label("BUILD 0.10 · THE WILDS · THIRD-PERSON CO-OP", 10, Color("60736d"))
 	build_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(build_label)
 
@@ -162,8 +162,8 @@ func _build_hud() -> void:
 	game_hud.add_child(boss_bar)
 	var roster_panel := PanelContainer.new()
 	roster_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	roster_panel.position = Vector2(-218, 70)
-	roster_panel.size = Vector2(196, 40)
+	roster_panel.position = Vector2(-362, 70)
+	roster_panel.size = Vector2(340, 40)
 	roster_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.05, 0.08, 0.11, 0.88), 12, Color(1, 1, 1, 0.08)))
 	game_hud.add_child(roster_panel)
 	var roster_margin := MarginContainer.new()
@@ -201,7 +201,7 @@ func _build_hud() -> void:
 	fusion_label = _pill("SOLO SLIME", Color("d8e8df"))
 	stats.add_child(fusion_label)
 
-	help_label = _pill("E fuse · Q split · F collect · Click fight (fused only) · Esc menu", Color("d8e8df"))
+	help_label = _pill("E fuse · Q split · F interact · X weapon · Click fight (fused only) · Esc menu", Color("d8e8df"))
 	help_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	help_label.position = Vector2(-680, -72)
 	help_label.size = Vector2(658, 60)
@@ -238,7 +238,7 @@ func _local_game() -> void:
 	if player_name.is_empty():
 		player_name = "Gloob"
 	world.setup_local_coop(player_name, "Arrow Slime")
-	help_label.text = "P1 WASD · Mouse look · Wheel zoom · Space jump · Shift sprint · E/Q · F collect\nP2 Arrows · U/O turn · I/K tilt · M fight · Enter jump · Ctrl sprint · N/B · L collect\nCamera: Right-click capture · Tab cursor · Home reset · T/G P1 tilt · [ / ] P2 zoom"
+	help_label.text = "P1 WASD · Mouse look · Wheel zoom · Space jump · Shift sprint · E/Q · F interact · X weapon\nP2 Arrows · U/O turn · I/K tilt · M fight · Enter jump · Ctrl sprint · N/B · L interact · J weapon\nCamera: Right-click capture · Tab cursor · Home reset · C / . climb (solo) · X / J weapon"
 	_show_toast("Local Dungeon ready: no server or IP required")
 
 
@@ -261,7 +261,7 @@ func _on_connected_to_server() -> void:
 
 func _enter_game(hosting: bool) -> void:
 	_create_world()
-	help_label.text = "WASD · Mouse look · Wheel zoom · Space jump · Shift sprint · E/Q fuse/split · F collect"
+	help_label.text = "WASD · Mouse look · Wheel zoom · Space jump · Shift sprint · E/Q fuse/split · F interact · X weapon"
 	var player_name := name_input.text.strip_edges()
 	if player_name.is_empty():
 		player_name = "Gloob"
@@ -315,11 +315,21 @@ func _update_roster(roster: Array) -> void:
 		dot.color = entry.color
 		dot.custom_minimum_size = Vector2(9, 9)
 		row.add_child(dot)
-		var player_name := _label("%s  %d HP\n%s" % [entry.name, entry.health, (" + ".join(entry.elements) if not entry.elements.is_empty() else "No power") + " [%d/%d]" % [entry.elements.size(), entry.capacity]], 12, Color("e8f2ed"))
+		var player_name := _label("%s  %d HP\n%s" % [entry.name, entry.health, (" + ".join(entry.elements) if not entry.elements.is_empty() else "No power") + " [%d/%d]" % [entry.elements.size(), entry.capacity] + " · " + entry.weapon], 12, Color("e8f2ed"))
 		player_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		player_name.custom_minimum_size.x = 250
+		player_name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		row.add_child(player_name)
 		row.add_child(_label("◆ %d" % entry.score, 12, Color("ffd66d")))
 		player_list.add_child(row)
+		var stamina = ProgressBar.new()
+		stamina.custom_minimum_size = Vector2(180,12)
+		stamina.max_value = 100
+		stamina.value = entry.stamina
+		stamina.show_percentage = false
+		stamina.tooltip_text = "Sprint / climb stamina: %d" % entry.stamina
+		player_list.add_child(stamina)
+		player_list.add_child(_label("STAMINA %d/100%s" % [entry.stamina," · CLIMBING" if entry.climbing else ""],10,Color("a6dfff")))
 
 
 func _show_toast(message: String) -> void:
@@ -397,7 +407,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _configure_inputs() -> void:
 	var bindings = {"p2_move_left": KEY_LEFT, "p2_move_right": KEY_RIGHT,
 		"p2_move_up": KEY_UP, "p2_move_down": KEY_DOWN, "collect": KEY_F,
-		"p2_collect": KEY_L, "restart_run": KEY_R, "jump": KEY_SPACE, "p2_jump": KEY_ENTER, "sprint": KEY_SHIFT, "p2_sprint": KEY_CTRL}
+		"p2_collect": KEY_L, "restart_run": KEY_R, "jump": KEY_SPACE, "p2_jump": KEY_ENTER, "climb": KEY_C, "p2_climb": KEY_PERIOD, "weapon": KEY_X, "p2_weapon": KEY_J, "sprint": KEY_SHIFT, "p2_sprint": KEY_CTRL}
 	for event in InputMap.action_get_events("attack"):
 		if event is InputEventKey and event.physical_keycode == KEY_SPACE:
 			InputMap.action_erase_event("attack", event)

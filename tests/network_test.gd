@@ -32,7 +32,7 @@ func run() -> void:
 			return
 		game.world.action.rpc_id(1, "fuse")
 		await create_timer(1.5).timeout
-		if game.world._local_body().is_empty() or game.world.map_index != 1 or game.world.state.pickups.size() != 23:
+		if game.world._local_body().is_empty() or game.world.map_index != 1 or game.world.state.pickups.size() != 6:
 			push_error("Map transition was not replicated")
 			quit(1)
 			return

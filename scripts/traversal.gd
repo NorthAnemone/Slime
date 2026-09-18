@@ -9,6 +9,15 @@ static func build(w: Node3D) -> void:
 		w.platforms.append({"rect":Rect2(p.x-2,p.z-2.5,4,5),"bottom":p.y,"top":p.y+height})
 		preload("res://scripts/outdoor_level.gd")._camera_blocker(root,p+Vector3(0,height/2,0),Vector3(4,height,5))
 	w._label3d(root,w.terrain.ground(Vector3(-30,0,40))+Vector3(0,2,0),"JUMP THE STONE STEPS",24)
+	# Tall optional routes: successive ledges offer safe stamina recovery.
+	for i in 3:
+		var p=w.terrain.ground(Vector3(32 if i != 1 else 36,0,-30-i*6))
+		var height=3.0+i*3
+		w._asset(root,"nature/cliff_block_rock.glb",p,Vector3(8,height,8))
+		w.platforms.append({"rect":Rect2(p.x-4,p.z-4,8,8),"bottom":p.y,"top":p.y+height})
+		preload("res://scripts/outdoor_level.gd")._camera_blocker(root,p+Vector3(0,height/2,0),Vector3(8,height,8))
+		w._asset(root,"kenney/column.glb",p+Vector3(2,height,2),Vector3(0.8,1.8,0.8))
+	w._label3d(root,w.terrain.ground(Vector3(32,0,-24))+Vector3(0,3,0),"SKY ROUTE · SOLO CLIMB · C / .",24)
 	if w.map_index != 1:return
 	for side in [-1,1]:
 		var p=w.terrain.ground(Vector3(side*24,0,-8))
@@ -22,10 +31,10 @@ static func build(w: Node3D) -> void:
 		w.platforms.append({"rect":Rect2(p.x-3.5,p.z-4,7,8),"bottom":roof.y,"top":roof.y+0.55})
 		preload("res://scripts/outdoor_level.gd")._camera_blocker(root,roof+Vector3(0,0.275,0),Vector3(7,0.55,8))
 		w.plates.append(p)
-		var holder=Node3D.new()
-		root.add_child(holder)
-		holder.position=p+Vector3(0,0.04,0)
-		w.plate_visuals.append(w._decal(holder,"magic_01",1.4,Color("ffd66d")))
-		w._label3d(root,p+Vector3(0,3.4,3),"SOLO PASSAGE · HOLD BOTH SEALS",23)
+		w._label3d(root,p+Vector3(0,3.4,3),"HIDDEN INSCRIPTION · F / L",23)
+	for i in 3:
+		var p=w.terrain.ground(Vector3(-5+i*5,0,-15))
+		w._asset(root,"kenney/column.glb",p,Vector3(1.2,1.1,1.2))
+		w.rune_labels.append(w._label3d(root,p+Vector3(0,2,0),"",26))
 	w.puzzle_gate=w._asset(root,"kenney/wall-opening.glb",w.terrain.ground(Vector3(w.terrain.trail_x(-20),0,-20)),Vector3(9,6,2))
-	w._label3d(w.puzzle_gate,Vector3(0,6.8,0),"TWIN SEALS · SPLIT TO OPEN",24)
+	w._label3d(w.puzzle_gate,Vector3(0,6.8,0),"RUNE LOCK · FUSE + F / L",24)
