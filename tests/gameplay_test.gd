@@ -116,9 +116,9 @@ func run() -> void:
 	check(w.camera_rig.split, "Separate local slimes have two third-person views")
 	check(w._can_occupy(Vector3(0, 0, 25), 0.7), "Old room gates no longer block exploration")
 	check(is_equal_approx(w.terrain.elevation(Vector3(0, 0, -68)), 8.4), "Summit is elevated above trailhead")
-	w.camera_rig.yaw[0] = PI / 2
+	w.camera_rig.orbit_yaw[0] = PI / 2
 	check(w.camera_rig.movement(Vector2.UP, 0).distance_to(Vector2.LEFT) < 0.001, "Movement is camera-relative")
-	w.camera_rig.yaw[0] = 0
+	w.camera_rig.orbit_yaw[0] = 0
 	var jumper = w.bodies[w.players[1].body_id]
 	w._action(1, "jump")
 	w._simulate(0.1)

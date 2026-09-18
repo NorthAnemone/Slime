@@ -14,6 +14,10 @@ const CENTERS = [48.0, 12.0, -28.0, -68.0]
 const PORTAL = Vector3(0, 8.4, -89)
 var camera_rig: Node
 var cleared = [true, false, false, false]
+var party_level = 1
+var party_xp = 0
+var xp_claims: Dictionary = {}
+var snapshot_frames: Array = []
 var is_host = false
 var local_coop = false
 var local_peer_id = 1
@@ -97,15 +101,15 @@ func _add_player(peer_id: int, player_name: String) -> void:
 		return
 	players[peer_id] = {"id": peer_id, "name": player_name.left(18), "color": COLORS[players.size() % 6],
 		"body_id": 0, "score": 0, "element": "", "offer": 0.0, "last_input": clock,
-		"move": Vector2.ZERO, "aim": Vector2.UP, "attack": false, "shot": 0.0}
+		"move": Vector2.ZERO, "aim": Vector2.UP, "attack": false, "sprint": false, "shot": 0.0}
 	_solo(peer_id, Vector3(-2 + players.size() * 1.7, 0, CENTERS[stage] + 8), 1.0)
 
 func _solo(peer_id: int, pos: Vector3, ratio: float) -> void:
 	pos.y = maxf(pos.y, terrain.elevation(pos))
 	var id = _id()
 	bodies[id] = {"id": id, "members": [peer_id], "position": pos, "radius": 0.7,
-		"health": maxf(1, 70 * ratio), "max_health": 70.0, "color": players[peer_id].color,
-		"vertical_speed": 0.0, "next_trail": 0.0, "invulnerable": clock + 1.5, "swing": 0.0, "facing": Vector2.UP}
+		"health": maxf(1, _member_health() * ratio), "max_health": _member_health(), "color": players[peer_id].color,
+		"velocity": Vector3.ZERO, "sprinting": false, "vertical_speed": 0.0, "next_trail": 0.0, "invulnerable": clock + 1.5, "swing": 0.0, "facing": Vector2.UP}
 	players[peer_id].body_id = id
 
 @rpc("any_peer", "call_remote", "reliable")
@@ -114,9 +118,9 @@ func register_player(player_name: String) -> void:
 		_add_player(multiplayer.get_remote_sender_id(), player_name.strip_edges())
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
-func submit_input(move: Vector2, aim: Vector2, attack: bool) -> void:
+func submit_input(move: Vector2, aim: Vector2, attack: bool, sprint: bool = false) -> void:
 	if is_host and move.is_finite() and aim.is_finite():
-		_set_input(multiplayer.get_remote_sender_id(), move, aim, attack)
+		_set_input(multiplayer.get_remote_sender_id(), move, aim, attack, sprint)
 
 @rpc("any_peer", "call_remote", "reliable")
 func action(kind: String) -> void:
@@ -125,6 +129,8 @@ func action(kind: String) -> void:
 
 @rpc("authority", "call_remote", "reliable", 2)
 func receive_snapshot(data: Dictionary) -> void:
+	snapshot_frames.append({"time": Time.get_ticks_msec() / 1000.0, "bodies": data.bodies, "enemies": data.enemies})
+	while snapshot_frames.size() > 8: snapshot_frames.pop_front()
 	_apply(data)
 
 @rpc("authority", "call_local", "reliable")
@@ -174,25 +180,27 @@ func _action(peer_id: int, kind: String) -> void:
 			for item in pickups.values():
 				if item.ready <= clock and _distance(item, body) < 2.3:
 					p.element = item.element
+					if item.room == -1: _award_xp(35, "cache:%d" % item.id)
 					item.ready = clock + 1.0
 					_message("%s absorbed %s. Fuse to activate it!" % [p.name, p.element])
 					break
 
-func _set_input(peer_id: int, move: Vector2, aim: Vector2, attack: bool) -> void:
+func _set_input(peer_id: int, move: Vector2, aim: Vector2, attack: bool, sprint: bool = false) -> void:
 	if players.has(peer_id):
 		var p = players[peer_id]
 		p.move = move.limit_length()
 		p.aim = aim.normalized() if aim.length_squared() > 0.01 else Vector2.UP
 		p.attack = attack
+		p.sprint = sprint
 		p.last_input = clock
 
 func _read_inputs() -> void:
 	var move = camera_rig.movement(Input.get_vector("move_left", "move_right", "move_up", "move_down"), 0)
 	var aim = _mouse_aim()
 	if is_host:
-		_set_input(local_peer_id, move, aim, Input.is_action_pressed("attack"))
+		_set_input(local_peer_id, move, aim, Input.is_action_pressed("attack"), Input.is_action_pressed("sprint"))
 	else:
-		submit_input.rpc_id(1, move, aim, Input.is_action_pressed("attack"))
+		submit_input.rpc_id(1, move, aim, Input.is_action_pressed("attack"), Input.is_action_pressed("sprint"))
 	if local_coop and players.has(2):
 		var move2 = camera_rig.movement(Input.get_vector("p2_move_left", "p2_move_right", "p2_move_up", "p2_move_down"), 1)
 		var body = bodies[players[2].body_id]
@@ -202,7 +210,7 @@ func _read_inputs() -> void:
 			var d = target.position - body.position
 			aim2 = Vector2(d.x, d.z).normalized()
 
-		_set_input(2, move2, aim2, Input.is_action_pressed("p2_attack"))
+		_set_input(2, move2, aim2, Input.is_action_pressed("p2_attack"), Input.is_action_pressed("p2_sprint"))
 
 func _physics_process(delta: float) -> void:
 	if not is_host and multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
@@ -210,7 +218,7 @@ func _physics_process(delta: float) -> void:
 	if players.is_empty() and is_host:
 		return
 	input_timer += delta
-	if input_timer >= 0.033:
+	if is_host or input_timer >= 0.033:
 		input_timer = 0
 		_read_inputs()
 	if not is_host:
@@ -218,10 +226,12 @@ func _physics_process(delta: float) -> void:
 	clock += delta
 	if not complete:
 		_simulate(delta)
+	# Rendering follows every physics tick; network/HUD traffic remains at 10 Hz.
+	state = _snapshot()
 	snapshot_timer += delta
 	if snapshot_timer >= 0.1:
 		snapshot_timer = 0
-		var data = _snapshot()
+		var data = state
 		if not local_coop:
 			receive_snapshot.rpc(data)
 		_apply(data)
@@ -229,18 +239,31 @@ func _physics_process(delta: float) -> void:
 func _simulate(delta: float) -> void:
 	for body in bodies.values():
 		var move = Vector2.ZERO
+		var moving_members = 0
+		var sprinting_members = 0
 		for member in body.members:
 			var p = players[member]
 			if clock - p.last_input > 0.3:
 				continue
 			move += p.move
+			if p.move.length_squared() > 0.01:
+				moving_members += 1
+				if p.sprint: sprinting_members += 1
 			body.facing = p.aim
 			if p.attack and body.members.size() > 1 and clock >= p.shot:
 				_attack(p, body)
-		# Average, do not normalize: disagreeing/idle members reduce shared speed.
-		move /= float(body.members.size())
-		var speed = 7.2 if body.members.size() == 1 else 5.7
-		_move(body, Vector3(move.x, 0, move.y) * speed * delta)
+		# Idle allies no longer halve speed; opposing active inputs still cancel.
+		move /= float(maxi(1, moving_members))
+		var sprinting = sprinting_members > 0 and move.length_squared() > 0.01
+		body.sprinting = sprinting
+		var speed = (9.0 if body.members.size() == 1 else 7.6) * (1.7 if sprinting else 1.0)
+		var desired_velocity = Vector3(move.x, 0, move.y) * speed
+		var acceleration = 80.0 if move.length_squared() < 0.01 else 60.0
+		body.velocity = body.velocity.move_toward(desired_velocity, acceleration * delta)
+		var before: Vector3 = body.position
+		_move(body, body.velocity * delta)
+		if is_equal_approx(body.position.x, before.x): body.velocity.x = 0.0
+		if is_equal_approx(body.position.z, before.z): body.velocity.z = 0.0
 		body.vertical_speed -= 22.0 * delta
 		body.position.y += body.vertical_speed * delta
 		var floor_y = terrain.elevation(body.position)
@@ -305,34 +328,35 @@ func _hit(enemy_id: int, damage: float, powers: Dictionary) -> void:
 	if not enemies.has(enemy_id):
 		return
 	var enemy = enemies[enemy_id]
+	var level_multiplier = 1.0 + (party_level - 1) * 0.12
 	var ember = powers.get("Ember", 0)
 	var frost = powers.get("Frost", 0)
 	var storm = powers.get("Storm", 0)
 	# Elemental damage scales exactly linearly with matching carried powers.
-	enemy.health -= damage + 8 * (ember + frost + storm)
+	enemy.health -= (damage + 8 * (ember + frost + storm)) * level_multiplier
 	enemy.flash = clock + 0.1
 	if ember > 0:
 		enemy.burn_until = clock + 3
-		enemy.burn_damage = 6.0 * ember
+		enemy.burn_damage = 6.0 * ember * level_multiplier
 	if frost > 0:
 		enemy.frost_until = clock + 2.0 * frost
 	if storm > 0:
 		var remaining = storm + 1
 		for other in enemies.values():
 			if other.id != enemy_id and _distance(enemy, other) < 7 and remaining > 0:
-				other.health -= 14.0 * storm
+				other.health -= 14.0 * storm * level_multiplier
 				other.flash = clock + 0.2
 				if frost > 0:
 					other.frost_until = clock + 2.0 * frost
 				if ember > 0:
 					other.burn_until = clock + 3
-					other.burn_damage = 6.0 * ember
+					other.burn_damage = 6.0 * ember * level_multiplier
 				remaining -= 1
 	if ember > 0 and powers.size() > 1:
 		_effect(enemy.position, 3.0, Color("#ffc46c"), 0.22)
 		for other in enemies.values():
 			if other.id != enemy_id and _distance(enemy, other) < 3:
-				other.health -= 12.0 * ember
+				other.health -= 12.0 * ember * level_multiplier
 				if frost > 0:
 					other.frost_until = clock + 2.0 * frost
 
@@ -377,7 +401,8 @@ func _check_fusion() -> void:
 			first.members = members
 			first.position = pos
 			first.radius = radius
-			first.max_health = 70.0 * members.size()
+			first.velocity = (first.velocity + second.velocity) * 0.5
+			first.max_health = _member_health() * members.size()
 			first.health = first.max_health * ratio
 			first.invulnerable = clock + 0.5
 			for member in members:
@@ -396,14 +421,15 @@ func _split(body: Dictionary) -> void:
 		if not _can_occupy(pos, 0.7):
 			pos = body.position
 		_solo(members[i], pos, ratio)
+		bodies[players[members[i]].body_id].velocity = body.velocity
 	# No healing, recharge or replacement powers when splitting.
 
-func _spawn_enemy(pos: Vector3, kind: String) -> int:
+func _spawn_enemy(pos: Vector3, kind: String, reward_key: String = "") -> int:
 	pos = terrain.ground(pos)
 	var id = _id()
 	var hp = 1400.0 if kind == "boss" else (110.0 if kind == "brute" else 65.0)
 	enemies[id] = {"id": id, "position": pos, "kind": kind, "radius": 2.1 if kind == "boss" else 0.8,
-		"health": hp, "max_health": hp, "attack_at": clock + 2.0, "flash": 0.0,
+		"health": hp, "max_health": hp, "reward_key": reward_key, "attack_at": clock + 2.0, "flash": 0.0,
 		"burn_until": 0.0, "burn_damage": 0.0, "frost_until": 0.0, "slow": false, "enraged": false}
 	return id
 
@@ -415,6 +441,7 @@ func _update_enemies(delta: float) -> void:
 		if e.burn_until > clock:
 			e.health -= e.burn_damage * delta
 		if e.health <= 0:
+			if e.reward_key != "": _award_xp(250 if e.kind == "boss" else (45 if e.kind == "brute" else 25), e.reward_key)
 			enemies.erase(id)
 			for p in players.values():
 				p.score += 1
@@ -529,6 +556,9 @@ func _reset_party() -> void:
 		i += 1
 
 func _restart() -> void:
+	party_level = 1
+	party_xp = 0
+	xp_claims.clear()
 	stage = 0
 	cleared = [true, false, false, false]
 	victory = false
@@ -547,9 +577,9 @@ func _start_encounter() -> void:
 	if stage in [1, 2]:
 		for i in (4 if stage == 1 else 6):
 			_spawn_enemy(terrain.LANDMARKS[stage] + Vector3(-7 + (i % 3) * 7, 0, -3 - (i / 3) * 3),
-				"brute" if stage == 2 and i % 2 == 0 else "crawler")
+				"brute" if stage == 2 and i % 2 == 0 else "crawler", "encounter:%d:%d" % [stage, i])
 	elif stage == 3:
-		boss_id = _spawn_enemy(terrain.LANDMARKS[3], "boss")
+		boss_id = _spawn_enemy(terrain.LANDMARKS[3], "boss", "warden")
 
 func _progress() -> void:
 	if enemies.is_empty(): cleared[stage] = true
@@ -557,6 +587,7 @@ func _progress() -> void:
 		for body in bodies.values():
 			if body.members.size() >= 2 and body.position.distance_to(terrain.LANDMARKS[stage + 1]) < 11:
 				stage += 1
+				_award_xp(40, "landmark:%d" % stage)
 				_start_encounter()
 				_message(ROOMS[stage] + " · defend the landmark together!")
 				return
@@ -625,7 +656,7 @@ func _snapshot() -> Dictionary:
 		for id in b.members:
 			copy.offering = copy.offering or players[id].offer > clock
 		body_array.append(copy)
-	return {"clock": clock, "stage": stage, "cleared": cleared, "victory": victory, "complete": complete, "players": roster,
+	return {"clock": clock, "party_level": party_level, "party_xp": party_xp, "xp_needed": _xp_needed(), "stage": stage, "cleared": cleared, "victory": victory, "complete": complete, "players": roster,
 		"bodies": body_array, "enemies": enemies.values().duplicate(true), "trails": trails.values().duplicate(true),
 		"pickups": pickups.values().duplicate(true), "shots": shots.values().duplicate(true), "hazards": hazards.values().duplicate(true)}
 
@@ -651,7 +682,7 @@ func _apply(data: Dictionary) -> void:
 	if data.victory: objective = "Reach the summit arch together."
 	if data.complete: objective = "EXPEDITION COMPLETE · R: replay · Esc: menu"
 	encounter_changed.emit({"title": ROOMS[data.stage], "objective": objective, "boss_health": boss_health,
-		"boss_max": boss_max, "power": body.get("power_name", ""), "complete": data.complete})
+		"boss_max": boss_max, "power": body.get("power_name", ""), "complete": data.complete, "party_level": data.party_level, "party_xp": data.party_xp, "xp_needed": data.xp_needed})
 
 func _local_body() -> Dictionary:
 	for body in state.get("bodies", []):
@@ -778,7 +809,11 @@ func _render_entities(delta: float) -> void:
 				visuals[key] = node
 			var visual: Node3D = visuals[key]
 			var moving = visual.position.distance_to(data.position) > 0.025
-			visual.position = visual.position.lerp(data.position, minf(1, delta * 18))
+			var render_pos = _sample_remote_position(kind, data)
+			if not is_host and kind in ["bodies", "enemies"]:
+				visual.position = render_pos
+			else:
+				visual.position = visual.position.lerp(render_pos, 1.0 - exp(-delta * 24))
 			match kind:
 				"bodies":
 					var fused = data.members.size() > 1
@@ -833,3 +868,48 @@ func _make_visual(kind: String, data: Dictionary) -> Node3D:
 		"hazards":
 			_decal(root, "circle_01", data.radius, Color(1, 0.1, 0.15, 0.8), 0.08)
 	return root
+
+func _member_health() -> float:
+	return 70.0 + (party_level - 1) * 10.0
+
+func _xp_needed() -> int:
+	return 100 + (party_level - 1) * 50
+
+func _award_xp(amount: int, claim: String) -> void:
+	if not is_host or xp_claims.has(claim): return
+	xp_claims[claim] = true
+	if party_level >= 10: return
+	party_xp += amount
+	var previous_level = party_level
+	while party_level < 10 and party_xp >= _xp_needed():
+		party_xp -= _xp_needed()
+		party_level += 1
+	if party_level >= 10: party_xp = 0
+	if party_level != previous_level:
+		for body in bodies.values():
+			var maximum = _member_health() * body.members.size()
+			body.health = minf(maximum, body.health + maximum - body.max_health)
+			body.max_health = maximum
+		_message("PARTY LEVEL %d · +10 health per slime, +12%% fusion damage per level" % party_level)
+
+func _sample_remote_position(kind: String, data: Dictionary) -> Vector3:
+	if is_host or not kind in ["bodies", "enemies"] or snapshot_frames.size() < 2:
+		return data.position
+	var render_time = Time.get_ticks_msec() / 1000.0 - 0.12
+	while snapshot_frames.size() > 2 and snapshot_frames[1].time <= render_time:
+		snapshot_frames.pop_front()
+	var first = snapshot_frames[0]
+	var second = snapshot_frames[1]
+	var a = {}
+	var b = {}
+	for entity in first[kind]:
+		if entity.id == data.id: a = entity
+	for entity in second[kind]:
+		if entity.id == data.id: b = entity
+	if a.is_empty() or b.is_empty(): return data.position
+	var weight = clampf((render_time - first.time) / maxf(0.001, second.time - first.time), 0, 1)
+	return a.position.lerp(b.position, weight)
+
+func camera_anchor(body: Dictionary) -> Vector3:
+	var visual = visuals.get("bodies" + str(body.id))
+	return visual.position if is_instance_valid(visual) else body.position

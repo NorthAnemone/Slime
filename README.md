@@ -1,4 +1,4 @@
-# Slimebound — build 0.5: The Wilds
+# Slimebound — build 0.6: The Wilds
 
 A Godot 4.3+ third-person co-op exploration prototype. Follow an outdoor trail from a campsite, through pine groves and uphill ridges, to the Moss Warden's summit. Slimes split to explore and gather powers, then fuse to fight.
 
@@ -10,7 +10,7 @@ This is a **bounded outdoor level**, not a finished open-world game or a PEAK cl
 
 1. Download the latest repository ZIP and extract it into a **fresh folder**.
 2. Import `project.godot` in Godot 4.3 or newer. Allow the bundled GLB models to import.
-3. Press F5. Confirm the menu says **BUILD 0.5 · THE WILDS · THIRD-PERSON CO-OP**.
+3. Press F5. Confirm the menu says **BUILD 0.6 · THE WILDS · THIRD-PERSON CO-OP**.
 4. Select **PLAY LOCAL DUNGEON — NO IP REQUIRED** for two players on one keyboard. This familiar button now starts the outdoor expedition.
 
 ## Camera and local controls
@@ -22,6 +22,7 @@ The camera stays **third-person in every form**. Separate local slimes each get 
 | Move | WASD | Arrow keys |
 | Orbit camera | Mouse | U / O |
 | Jump | Space | Enter |
+| Hold sprint | Shift | Ctrl |
 | Attack, fused only | Left mouse | M (nearby enemy auto-aim) |
 | Offer fusion | E | N |
 | Split | Q | B |
@@ -30,7 +31,7 @@ The camera stays **third-person in every form**. Separate local slimes each get 
 | Restart expedition | R (host) | — |
 | Return to menu | Escape | Escape |
 
-Stand close and offer fusion within three seconds of each other. Both players steer the shared body: opposing movement cancels out; an idle partner reduces speed. Every member must consent to larger online fusions. Any member can split.
+Stand close and offer fusion within three seconds of each other. Both players steer the shared body: opposing movement cancels out; an idle partner no longer reduces speed. Every member must consent to larger online fusions. Any member can split.
 
 Space now jumps; it no longer attacks. Mouse look aims player 1's ground-following spell attacks. These are not free-aim vertical projectiles.
 
@@ -87,3 +88,13 @@ godot --headless --script res://tests/gameplay_test.gd
 The gameplay test covers solo restrictions, trails, powers, fusion, boss phases, victory, jumping, terrain, a clear traversal route, split-screen and fused third-person framing. Godot 4.3's dummy renderer may print `mesh_get_surface_count` during resource cleanup; check the test results and exit status for failures.
 
 For networking, run `godot --headless --script res://tests/network_test.gd -- --server`, then launch `godot --headless --script res://tests/network_test.gd` in another terminal within one second. For rendered captures, run `godot --script res://tests/visual_check.gd`; images go to `user://screenshots` unless `SLIME_SCREENSHOT_DIR` is set.
+
+## Movement and shared levels (build 0.6)
+
+Walking is 9 units/second solo and 7.6 fused. Hold sprint for 1.7× speed; either moving member can sprint the fused body. Acceleration and braking soften starts and stops. Camera orbit is smoothed, follows the rendered slime each frame, and retracts around obstacles with a gradual release. Online characters interpolate buffered snapshots (120 ms) rather than stepping between network updates.
+
+The party shares XP: crawlers grant 25, brutes 45, the boss 250, new landmarks 40, and each exploration cache 35. Rewards are claimed once per expedition; ordinary power pedestals and boss summons grant no XP. Level 2 requires 100 XP, with each subsequent level costing 50 more. Each level adds 10 maximum health per slime (and heals that amount) and 12% of base fusion damage, including elemental effects. Maximum level is 10. The HUD shows level and progress to the next level.
+
+Levels survive defeat and splitting/fusion. R starts a fresh expedition at level 1; there is no saved progression between sessions.
+
+Additional regression test: `godot --headless --path . --script res://tests/movement_level_test.gd`.

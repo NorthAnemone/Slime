@@ -10,6 +10,8 @@ var game_hud: Control
 var name_input: LineEdit
 var address_input: LineEdit
 var status_label: Label
+var xp_bar: ProgressBar
+var level_label: Label
 var health_bar: ProgressBar
 var health_label: Label
 var fusion_label: Label
@@ -122,7 +124,7 @@ func _build_interface() -> void:
 	var controls := _label("Solo: leave slowing trails · Collect powers · Fuse to fight", 12, Color("ffd66d"))
 	controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(controls)
-	var build_label := _label("BUILD 0.5 · THE WILDS · THIRD-PERSON CO-OP", 10, Color("60736d"))
+	var build_label := _label("BUILD 0.6 · THE WILDS · THIRD-PERSON CO-OP", 10, Color("60736d"))
 	build_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(build_label)
 
@@ -176,9 +178,15 @@ func _build_hud() -> void:
 
 	var stats := VBoxContainer.new()
 	stats.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	stats.position = Vector2(22, -84)
+	stats.position = Vector2(22, -128)
 	stats.size = Vector2(350, 62)
 	game_hud.add_child(stats)
+	level_label = _label("PARTY LEVEL 1 · 0 / 100 XP", 12, Color("a6dfff"))
+	stats.add_child(level_label)
+	xp_bar = ProgressBar.new()
+	xp_bar.custom_minimum_size = Vector2(350, 10)
+	xp_bar.show_percentage = false
+	stats.add_child(xp_bar)
 	health_bar = ProgressBar.new()
 	health_bar.custom_minimum_size = Vector2(350, 23)
 	health_bar.show_percentage = false
@@ -230,7 +238,7 @@ func _local_game() -> void:
 	if player_name.is_empty():
 		player_name = "Gloob"
 	world.setup_local_coop(player_name, "Arrow Slime")
-	help_label.text = "P1 WASD · Mouse look · Click fight · Space jump · E/Q · F collect\nP2 Arrows · U/O look · M fight · Enter jump · N/B · L collect · Tab cursor"
+	help_label.text = "P1 WASD · Mouse/Click · Space jump · Shift sprint · E/Q · F collect\nP2 Arrows · U/O look · M fight · Enter jump · Ctrl sprint · N/B · L collect"
 	_show_toast("Local Dungeon ready: no server or IP required")
 
 
@@ -253,7 +261,7 @@ func _on_connected_to_server() -> void:
 
 func _enter_game(hosting: bool) -> void:
 	_create_world()
-	help_label.text = "WASD · Mouse look · Space jump · Click fight · E/Q fuse/split · F collect · Tab cursor"
+	help_label.text = "WASD · Mouse/Click · Space jump · Shift sprint · E/Q fuse/split · F collect"
 	var player_name := name_input.text.strip_edges()
 	if player_name.is_empty():
 		player_name = "Gloob"
@@ -371,6 +379,9 @@ func _spacer(height: float) -> Control:
 
 
 func _update_encounter(info: Dictionary) -> void:
+	level_label.text = "PARTY LEVEL %d · %d / %d XP" % [info.party_level, info.party_xp, info.xp_needed] if info.party_level < 10 else "PARTY LEVEL 10 · MAX LEVEL"
+	xp_bar.max_value = info.xp_needed
+	xp_bar.value = info.party_xp if info.party_level < 10 else info.xp_needed
 	objective_label.text = info.title
 	encounter_label.text = info.objective
 	fusion_label.text = info.power
@@ -386,7 +397,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _configure_inputs() -> void:
 	var bindings = {"p2_move_left": KEY_LEFT, "p2_move_right": KEY_RIGHT,
 		"p2_move_up": KEY_UP, "p2_move_down": KEY_DOWN, "collect": KEY_F,
-		"p2_collect": KEY_L, "restart_run": KEY_R, "jump": KEY_SPACE, "p2_jump": KEY_ENTER}
+		"p2_collect": KEY_L, "restart_run": KEY_R, "jump": KEY_SPACE, "p2_jump": KEY_ENTER, "sprint": KEY_SHIFT, "p2_sprint": KEY_CTRL}
 	for event in InputMap.action_get_events("attack"):
 		if event is InputEventKey and event.physical_keycode == KEY_SPACE:
 			InputMap.action_erase_event("attack", event)
