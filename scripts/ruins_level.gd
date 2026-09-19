@@ -48,11 +48,13 @@ static func build(w: Node3D) -> void:
 		if p.x > 24 and p.x < 43 and p.z < -22 and p.z > -49: clear = true
 		for cache in [Vector3(32,0,26),Vector3(-34,0,-3),Vector3(-30,0,-70),Vector3(-36,0,22),Vector3(35,0,-3),Vector3(-35,0,-34),Vector3(-26,0,-76)]:
 			if Vector2(p.x-cache.x,p.z-cache.z).length() < 5: clear = true
+		for location in w._shop_locations():
+			if p.distance_to(location) < 8: clear = true
 		if clear: continue
 		var size = rng.randf_range(2,5)
-		w._asset(root,"nature/rock_largeA.glb",p,Vector3(size,size*0.7,size)).rotation.y=rng.randf_range(0,TAU)
-		w.walls.append(Rect2(p.x-size*0.4,p.z-size*0.4,size*0.8,size*0.8))
-		preload("res://scripts/outdoor_level.gd")._camera_blocker(root,p+Vector3(0,size*0.35,0),Vector3(size*0.8,size*0.7,size*0.8))
+		var rock = w._asset(root,"nature/rock_largeA.glb",p,Vector3(size,size*0.7,size))
+		rock.rotation.y=rng.randf_range(0,TAU)
+		w._register_rock(rock)
 	w._asset(root,"nature/tent_smallOpen.glb",Vector3(-7,0,53),Vector3(4,3,4))
 	w._asset(root,"kenney/wall-opening.glb",ground(Vector3(22,0,20)),Vector3(10,7,2))
 	w.portal=w._asset(root,"kenney/wall-opening.glb",EXIT,Vector3(8,8,2))

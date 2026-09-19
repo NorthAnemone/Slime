@@ -48,6 +48,8 @@ static func build(w: Node3D) -> void:
 		if p.x > 24 and p.x < 43 and p.z < -22 and p.z > -49: clear = true
 		for cache in [Vector3(32,0,26),Vector3(-34,0,-3),Vector3(-30,0,-70),Vector3(-36,0,22),Vector3(35,0,-3),Vector3(-35,0,-34),Vector3(-26,0,-76)]:
 			if Vector2(p.x-cache.x,p.z-cache.z).length() < 5: clear = true
+		for location in w._shop_locations():
+			if p.distance_to(location) < 8: clear = true
 		if clear: continue
 		var height = rng.randf_range(7, 14)
 		var tree = w._asset(root, "nature/tree_pineTallA.glb" if i % 3 else "nature/tree_pineRoundA.glb", ground(p), Vector3(height * 0.48, height, height * 0.48))
@@ -65,9 +67,8 @@ static func build(w: Node3D) -> void:
 		var p = LANDMARKS[i]
 		for side in [-1, 1]:
 			var rock_pos = ground(p + Vector3(side * 12, 0, -3))
-			w._asset(root, "nature/rock_largeB.glb", rock_pos, Vector3(7, 5 + i * 2, 7))
-			w.walls.append(Rect2(rock_pos.x - 2.6, rock_pos.z - 2.6, 5.2, 5.2))
-			_camera_blocker(root, rock_pos + Vector3(0, 2.5 + i, 0), Vector3(5.2, 5 + i * 2, 5.2))
+			var rock = w._asset(root, "nature/rock_largeB.glb", rock_pos, Vector3(7, 5 + i * 2, 7))
+			w._register_rock(rock)
 		if i > 0:
 			w._asset(root, "kenney/column.glb", ground(p + Vector3(-5, 0, -4)), Vector3(2, 6 + i, 2))
 			w._asset(root, "kenney/column.glb", ground(p + Vector3(5, 0, -4)), Vector3(2, 5 + i, 2))

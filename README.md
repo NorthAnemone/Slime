@@ -1,10 +1,10 @@
-# Slimebound — build 0.10
+# Slimebound — build 0.11
 
 A Godot 4.3+ third-person co-op prototype with two connected outdoor maps. Explore as small slimes, climb to rare powers, then fuse to fight using swords, bows or elemental magic. All artwork is publicly licensed; see [ASSET_CREDITS.md](ASSET_CREDITS.md).
 
 ## Run
 
-Download the repository ZIP into a fresh folder, import `project.godot`, and press F5. Confirm **BUILD 0.10**. Select **PLAY LOCAL DUNGEON — NO IP REQUIRED** for two players on one keyboard. Separate players get split-screen cameras; fusion merges the views. Both forms stay third-person.
+Download the repository ZIP into a fresh folder, import `project.godot`, and press F5. Confirm **BUILD 0.11**. Select **PLAY LOCAL DUNGEON — NO IP REQUIRED** for two players on one keyboard. Separate players get split-screen cameras; fusion merges the views. Both forms stay third-person.
 
 Online Host/Join uses UDP 7777, up to six players. Internet play may require port forwarding; there is no relay or matchmaking. Local play opens no server port. The host controls gameplay state and progression.
 
@@ -19,7 +19,7 @@ Online Host/Join uses UDP 7777, up to six players. Internet play may require por
 | Sprint | Shift | Ctrl |
 | Climb while solo | Hold C against a ledge and move into it | Hold period (.) and move into it |
 | Offer fusion / split | E / Q | N / B |
-| Collect / read / turn rune / operate lock | F | L |
+| Collect / buy nearby shop item / read / turn rune / operate lock | F | L |
 | Camera turn | Mouse | U / O |
 | Camera tilt | Mouse or T / G | I / K |
 | Camera zoom | Mouse wheel | [ / ] |
@@ -28,7 +28,17 @@ Online Host/Join uses UDP 7777, up to six players. Internet play may require por
 | Travel to map two after completing map one | F8, host only | — |
 | Restart entire expedition / menu | R / Escape | — |
 
-Both players must consent to fusion. Opposing movement cancels; idle partners do not halve speed. Any member can split. Each player selects their own attack style, even while sharing a body. The weapon on the model reflects the most recent attack style. The fused character now has the 90-degree facing correction.
+Both players must consent to fusion. Opposing movement cancels; idle partners do not halve speed. Any member can split. Each player selects their own attack style, even while sharing a body. Every fused member has a separate visible Sword/Bow attachment and swing state. More than two members add arms reused from the licensed slime model. The fused character now has the 90-degree facing correction.
+
+## Coins, shops and roaming enemies
+
+Enemies drop golden coin pickups: 6 for ordinary enemies, 10 for brutes, 40 for bosses. Walk nearby to collect them into the shared party wallet. Coins persist through defeat and map travel; R resets them. Each enemy can reward the party once, preventing checkpoint farming.
+
+Three trail shops per map sit near the trailhead, between the first two landmarks, and before the summit. Stand beside a labelled offer and press **F / L** to buy. Healing costs **20** and restores the whole party; a **60**-coin upgrade adds 10% attack damage (maximum three); a **45**-coin elemental power needs a solo slime with a free slot. Each offer can be bought once per shop. Sold-out labels update for everyone. Map two offers Venom, Gale and Storm.
+
+Each expedition scatters up to 20 roaming enemies across the map, avoiding obstacles and shop centers. Distant enemies stay dormant until players approach. The first two landmark objectives require **4 and 6 kills in their respective regions**, including roaming enemies there. Surviving enemies remain optional when the route opens. The rune lock and final boss still need to be completed. Shops do not pause combat.
+
+Playable rocks now use their actual model triangles for landings and camera collision. Jump onto low rocks, or climb taller ones as a solo slime; the distant skyline remains outside the playable boundary.
 
 ## Three different attacks
 
@@ -68,7 +78,7 @@ Trails last seven seconds. Allied speed bonuses cap at 35%; overlapping patches 
 
 ## Maps and the rune puzzle
 
-**The Wilds:** Trailhead → Whispering Grove → Sunlit Ridge → Warden Summit. Activate encounters while fused, clear them, defeat the 1,800-HP Moss Warden and enter the summit arch. The host can then press F8 to reach Amber Ruins with the party’s progression intact.
+**The Wilds:** Trailhead → Whispering Grove → Sunlit Ridge → Warden Summit. Activate encounters while fused, meet their kill targets, defeat the 1,800-HP Moss Warden and enter the summit arch. The host can then press F8 to reach Amber Ruins with the party’s progression intact.
 
 **Amber Ruins:** Caravan Camp → Broken Court → Pillar Pass → Amber Sanctum. Enemies have 40% more health. The Amber Warden currently reuses the first boss’s model and attack patterns at 2,520 HP.
 
@@ -88,6 +98,7 @@ Magic shots have solid opaque colored bodies, with bright cores and directional 
 godot --headless --editor --import --quit
 godot --headless --script res://tests/gameplay_test.gd
 godot --headless --script res://tests/combat_climb_test.gd
+godot --headless --script res://tests/economy_rocks_test.gd
 ```
 
 Additional regression scripts cover movement, powers, trails, camera input, traversal and transformations. `tests/network_test.gd` verifies authoritative state and travel to map two: start one instance with `-- --server`, then a second without that flag within one second. `tests/visual_check.gd` captures rendered scenes in `user://screenshots` (or `SLIME_SCREENSHOT_DIR`). Godot 4.3’s dummy renderer can print `mesh_get_surface_count` during resource cleanup; inspect test results and exit status for failures.

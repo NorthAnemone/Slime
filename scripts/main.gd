@@ -124,7 +124,7 @@ func _build_interface() -> void:
 	var controls := _label("Solo: leave elemental trails · Collect powers · Fuse for full strength", 12, Color("ffd66d"))
 	controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(controls)
-	var build_label := _label("BUILD 0.10 · THE WILDS · THIRD-PERSON CO-OP", 10, Color("60736d"))
+	var build_label := _label("BUILD 0.11 · THE WILDS · THIRD-PERSON CO-OP", 10, Color("60736d"))
 	build_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(build_label)
 
@@ -392,7 +392,7 @@ func _update_encounter(info: Dictionary) -> void:
 	level_label.text = "PARTY LEVEL %d · %d / %d XP" % [info.party_level, info.party_xp, info.xp_needed] if info.party_level < 10 else "PARTY LEVEL 10 · MAX LEVEL"
 	xp_bar.max_value = info.xp_needed
 	xp_bar.value = info.party_xp if info.party_level < 10 else info.xp_needed
-	objective_label.text = info.title
+	objective_label.text = info.title + " · %d COINS" % info.get("coins",0)
 	encounter_label.text = info.objective
 	fusion_label.text = info.power
 	boss_bar.visible = info.boss_max > 0

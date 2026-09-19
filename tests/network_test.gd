@@ -8,6 +8,9 @@ func run() -> void:
 	if "--server" in OS.get_cmdline_user_args():
 		game._host_game()
 		game.world._award_xp(250, "network_test")
+		game.world.coins = 87
+		game.world.damage_upgrades = 1
+		game.world.shop_stock["0:1"] = true
 		game.world.players[1].elements = ["Ember", "Storm"]
 		game.world.players[1].element = "Ember + Storm"
 		await create_timer(4).timeout
@@ -28,6 +31,10 @@ func run() -> void:
 			return
 		if game.world.state.party_level != 3 or game.world.state.players[0].elements.size() != 2 or game.world.state.players[0].capacity != 2:
 			push_error("Shared level was not replicated")
+			quit(1)
+			return
+		if game.world.state.coins != 87 or game.world.state.damage_upgrades != 1 or not game.world.state.shop_stock.get("0:1",false):
+			push_error("Economy was not replicated")
 			quit(1)
 			return
 		game.world.action.rpc_id(1, "fuse")

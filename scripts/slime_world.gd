@@ -12,6 +12,7 @@ const CameraRig = preload("res://scripts/exploration_camera.gd")
 var ROOMS = ["TRAILHEAD", "WHISPERING GROVE", "SUNLIT RIDGE", "WARDEN SUMMIT"]
 const CENTERS = [48.0, 12.0, -28.0, -68.0]
 var PORTAL = Vector3(0, 8.4, -89)
+var rock_surfaces: Array = []
 var platforms: Array = []
 var plates: Array = []
 var plate_visuals: Array = []
@@ -25,6 +26,15 @@ const RUNE_NAMES = ["SUN", "LEAF", "MOON"]
 var map_index = 0
 var camera_rig: Node
 var cleared = [true, false, false, false]
+var coins = 0
+var loot: Dictionary = {}
+var coin_claims: Dictionary = {}
+var shop_stock: Dictionary = {}
+var shop_labels: Dictionary = {}
+var damage_upgrades = 0
+var region_kills = [0,0,0,0]
+var encounter_started: Dictionary = {}
+var spawn_rng = RandomNumberGenerator.new()
 var party_level = 1
 var party_xp = 0
 var xp_claims: Dictionary = {}
@@ -90,6 +100,7 @@ func setup_local_coop(first_name: String, second_name: String) -> void:
 	_apply(_snapshot())
 
 func _start() -> void:
+	_spawn_roamers()
 	# Finite, shared finds off the main route; no replenishing power stations.
 	var positions = [Vector3(-22,0,36),Vector3(32,0,26),Vector3(-34,0,-3),Vector3(32,0,-42),Vector3(-30,0,-70)]
 	var elements = ["Ember","Frost","Storm","Ember","Frost"]
@@ -199,6 +210,7 @@ func _action(peer_id: int, kind: String) -> void:
 			if body.members.size() > 1:
 				_split(body)
 		"collect":
+			if _shop_interact(p, body): return
 			if _interact_runes(body): return
 			if body.members.size() > 1:
 				_message("Split first! Only solo slimes absorb power.")
@@ -341,6 +353,7 @@ func _simulate(delta: float) -> void:
 	for id in trails.keys():
 		if trails[id].expires < clock:
 			trails.erase(id)
+	_collect_coins()
 	_check_fusion()
 	_update_shots(delta)
 	_update_enemies(delta)
@@ -387,6 +400,7 @@ func _attack(p: Dictionary, body: Dictionary) -> void:
 		_message("Magic needs an element. Switch to Sword or Bow (X / J).")
 		return
 	p.shot = clock + (0.48 if style == "Sword" else (0.8 if style == "Bow" else 1.05))
+	p.swing = clock + 0.25
 	body.swing = clock + 0.25
 	body.attack_style = style
 	body.facing = p.aim
@@ -406,6 +420,7 @@ func _attack(p: Dictionary, body: Dictionary) -> void:
 		"color":Color("ffe6aa") if style == "Bow" else ELEMENTS[powers.keys()[0]],"enemy":false,"style":style}
 
 func _hit(enemy_id: int, damage: float, powers: Dictionary) -> void:
+	damage *= 1.0 + damage_upgrades * 0.1
 	if not enemies.has(enemy_id):
 		return
 	var enemy = enemies[enemy_id]
@@ -544,7 +559,7 @@ func _spawn_enemy(pos: Vector3, kind: String, reward_key: String = "") -> int:
 	var id = _id()
 	var hp = (1800.0 if kind == "boss" else (150.0 if kind == "brute" else (100.0 if kind == "skeleton" else (75.0 if kind == "bat" else 85.0)))) * (1.4 if map_index == 1 else 1.0)
 	enemies[id] = {"id": id, "position": pos, "kind": kind, "radius": 2.1 if kind == "boss" else 0.8,
-		"health": hp, "max_health": hp, "reward_key": reward_key, "attack_at": clock + 2.0, "cast_at": 0.0, "dash_until": 0.0, "facing": Vector3.FORWARD, "aim": Vector3.FORWARD, "flash": 0.0,
+		"health": hp, "max_health": hp, "reward_key": reward_key, "region": stage, "attack_at": clock + 2.0, "cast_at": 0.0, "dash_until": 0.0, "facing": Vector3.FORWARD, "aim": Vector3.FORWARD, "flash": 0.0,
 		"trail_shock_at": 0.0, "poison_until": 0.0, "poison_damage": 0.0, "burn_until": 0.0, "burn_damage": 0.0, "frost_until": 0.0, "slow": false, "enraged": false}
 	return id
 
@@ -559,6 +574,7 @@ func _update_enemies(delta: float) -> void:
 		if e.poison_until > clock: e.health -= e.poison_damage * delta
 		if e.health <= 0:
 			if e.reward_key != "": _award_xp(250 if e.kind == "boss" else (45 if e.kind == "brute" else 25), e.reward_key)
+			_drop_coins(e)
 			enemies.erase(id)
 			for p in players.values():
 				p.score += 1
@@ -572,6 +588,7 @@ func _update_enemies(delta: float) -> void:
 		var target = _nearest(e.position, bodies)
 		if target.is_empty():
 			continue
+		if e.kind != "boss" and _distance(e, target) > 24: continue
 		var slow = 1.0
 		for trail in trails.values():
 			if trail.expires > clock and _distance(e, trail) < e.radius + 0.85:
@@ -691,6 +708,14 @@ func _reset_party() -> void:
 		i += 1
 
 func _restart() -> void:
+	coins = 0
+	damage_upgrades = 0
+	coin_claims.clear()
+	shop_stock.clear()
+	loot.clear()
+	enemies.clear()
+	encounter_started.clear()
+	region_kills = [0,0,0,0]
 	if map_index != 0:
 		_load_map(0)
 		pickups.clear()
@@ -710,11 +735,13 @@ func _restart() -> void:
 		p.elements.clear()
 		p.score = 0
 	_reset_party()
+	if enemies.is_empty(): _spawn_roamers()
 	_start_encounter()
 	_message("A fresh descent begins.")
 
 func _start_encounter() -> void:
-	enemies.clear()
+	if encounter_started.has(stage): return
+	encounter_started[stage] = true
 	attack_step = 0
 	boss_id = 0
 	if stage in [1, 2]:
@@ -725,7 +752,8 @@ func _start_encounter() -> void:
 		boss_id = _spawn_enemy(terrain.LANDMARKS[3], "boss", "map%d:warden" % map_index)
 
 func _progress() -> void:
-	if enemies.is_empty(): cleared[stage] = true
+	if stage in [1,2] and region_kills[stage] >= (4 if stage == 1 else 6): cleared[stage] = true
+	if stage == 3 and victory: cleared[stage] = true
 	if stage < 3 and cleared[stage]:
 		for body in bodies.values():
 			if map_index == 1 and stage == 1 and not puzzle_open: continue
@@ -768,6 +796,7 @@ func _nearest(pos: Vector3, collection: Dictionary) -> Dictionary:
 func _can_occupy(pos: Vector3, radius: float) -> bool:
 	if absf(pos.x) + radius > 48 or pos.z - radius < -98 or pos.z + radius > 65:
 		return false
+	if _rock_height(pos) > pos.y + 0.32: return false
 	var point = Vector2(pos.x, pos.z)
 	for slab in platforms:
 		if not slab.rect.grow(radius * 0.7).has_point(point): continue
@@ -800,11 +829,15 @@ func _snapshot() -> Dictionary:
 		var copy = b.duplicate(true)
 		copy.power_name = _power_name(b)
 		copy.powers = _powers(b)
+		copy.equipment = []
+		for member in b.members:
+			var p = players[member]
+			copy.equipment.append({"id":member,"weapon":p.weapon,"aim":p.aim,"swing":p.get("swing",0.0)})
 		copy.offering = false
 		for id in b.members:
 			copy.offering = copy.offering or players[id].offer > clock
 		body_array.append(copy)
-	return {"clock": clock, "map_index": map_index, "puzzle_open": puzzle_open, "puzzle_charge": puzzle_charge, "rune_states": rune_states.duplicate(), "clues_found": clues_found, "party_level": party_level, "party_xp": party_xp, "xp_needed": _xp_needed(), "stage": stage, "cleared": cleared, "victory": victory, "complete": complete, "players": roster,
+	return {"coins": coins, "loot": loot.values().duplicate(true), "shop_stock": shop_stock.duplicate(), "region_kills": region_kills.duplicate(), "damage_upgrades": damage_upgrades, "clock": clock, "map_index": map_index, "puzzle_open": puzzle_open, "puzzle_charge": puzzle_charge, "rune_states": rune_states.duplicate(), "clues_found": clues_found, "party_level": party_level, "party_xp": party_xp, "xp_needed": _xp_needed(), "stage": stage, "cleared": cleared, "victory": victory, "complete": complete, "players": roster,
 		"bodies": body_array, "enemies": enemies.values().duplicate(true), "trails": trails.values().duplicate(true),
 		"pickups": pickups.values().duplicate(true), "shots": shots.values().duplicate(true), "hazards": hazards.values().duplicate(true)}
 
@@ -828,15 +861,15 @@ func _apply(data: Dictionary) -> void:
 	var objective = "Travel fused along the trail to " + ROOMS[mini(3, data.stage + 1)] + "."
 	if data.stage == 0:
 		objective = "Explore side paths for rare powers. Fuse (E + N); Sword and Bow need no powers."
-	elif not data.enemies.is_empty():
-		objective = "Defend this landmark · %d enemies remain." % data.enemies.size()
+	elif data.stage in [1,2] and not data.cleared[data.stage]:
+		objective = "Defeat enemies in this region · %d / %d. Other enemies are optional." % [data.get("region_kills",[0,0,0,0])[data.stage],4 if data.stage == 1 else 6]
 	if data.stage == 3 and not data.victory:
 		objective = ("Moss Warden" if map_index == 0 else "Amber Warden") + " · dodge red warnings; jump to evade ground slams."
-	if map_index == 1 and data.stage == 1 and data.enemies.is_empty() and not puzzle_open:
+	if map_index == 1 and data.stage == 1 and data.cleared[1] and not puzzle_open:
 		objective = "Read both hidden inscriptions (F/L), order the rune dials, then fuse to turn the lock."
 	if data.victory: objective = "Reach the summit arch together."
 	if data.complete: objective = ("MAP CLEAR · F8: enter Amber Ruins · R: restart" if map_index == 0 else "BOTH MAPS CLEARED · R: restart expedition")
-	encounter_changed.emit({"title": ("THE WILDS · " if map_index == 0 else "AMBER RUINS · ") + ROOMS[data.stage], "objective": objective, "boss_health": boss_health,
+	encounter_changed.emit({"coins": data.get("coins",0), "title": ("THE WILDS · " if map_index == 0 else "AMBER RUINS · ") + ROOMS[data.stage], "objective": objective, "boss_health": boss_health,
 		"boss_max": boss_max, "power": body.get("power_name", ""), "complete": data.complete, "party_level": data.party_level, "party_xp": data.party_xp, "xp_needed": data.xp_needed})
 
 func _local_body() -> Dictionary:
@@ -857,6 +890,8 @@ func _process(delta: float) -> void:
 	if not body.is_empty():
 		aim_marker.position = terrain.ground(body.position + Vector3(_mouse_aim().x, 0, _mouse_aim().y) * 5) + Vector3(0, 0.06, 0)
 		aim_marker.visible = body.members.size() > 1
+	for key in shop_labels:
+		shop_labels[key].text = "SOLD OUT" if state.get("shop_stock",{}).get(key,false) else shop_labels[key].get_meta("offer")
 	portal.visible = state.victory
 	if is_instance_valid(puzzle_gate): puzzle_gate.scale.y = lerpf(puzzle_gate.scale.y, 0.1 if puzzle_open else 1.0, 1-exp(-delta*5))
 	for i in rune_labels.size(): rune_labels[i].text = "%d · %s" % [i+1,RUNE_NAMES[rune_states[i]]]
@@ -942,6 +977,7 @@ func _label3d(parent: Node3D, pos: Vector3, text: String, size: int = 32) -> Lab
 func _build_level() -> void:
 	terrain.build(self)
 	preload("res://scripts/traversal.gd").build(self)
+	_build_shops()
 
 func _animate(root: Node, action_name: String) -> void:
 	var anim = root.find_child("AnimationPlayer", true, false) as AnimationPlayer
@@ -956,8 +992,8 @@ func _animate(root: Node, action_name: String) -> void:
 
 func _render_entities(delta: float) -> void:
 	var present = {}
-	for kind in ["bodies", "enemies", "trails", "pickups", "shots", "hazards"]:
-		for data in state[kind]:
+	for kind in ["bodies", "enemies", "trails", "pickups", "shots", "hazards", "loot"]:
+		for data in state.get(kind,[]):
 			var key = kind + str(data.id)
 			present[key] = true
 			var signature = str(data.members.size()) if kind == "bodies" else ""
@@ -985,9 +1021,13 @@ func _render_entities(delta: float) -> void:
 					if fused:
 						var weapons = visual.get_node("Weapons")
 						weapons.rotation.y = atan2(face.x,face.y)
-						weapons.get_node("Sword").visible = data.attack_style == "Sword"
-						weapons.get_node("Bow").visible = data.attack_style == "Bow"
-						weapons.get_node("Sword").rotation.z = -0.4 - sin(clampf((data.swing-state.clock)/0.25,0,1)*PI)*1.2
+						for i in data.get("equipment",[]).size():
+							var equipment = data.equipment[i]
+							var hand = weapons.get_child(i)
+							hand.rotation.y = atan2(equipment.aim.x,equipment.aim.y) - weapons.rotation.y
+							hand.get_node("Sword").visible = equipment.weapon == "Sword"
+							hand.get_node("Bow").visible = equipment.weapon == "Bow"
+							hand.get_node("Sword").rotation.z = -0.4 - sin(clampf((equipment.swing-state.clock)/0.25,0,1)*PI)*1.2
 					visual.get_node("Model").rotation.y = lerp_angle(visual.get_node("Model").rotation.y, atan2(face.x, face.y) + (-PI / 2 if fused else 0), minf(1, delta * 8))
 					visual.get_node("Name").text = ("FUSED  %d/%d" % [data.health, data.max_health]) if fused else "P%d" % data.members[0]
 					visual.get_node("Offer").visible = data.offering
@@ -1045,8 +1085,17 @@ func _make_visual(kind: String, data: Dictionary) -> Node3D:
 				var weapons = Node3D.new()
 				weapons.name = "Weapons"
 				root.add_child(weapons)
-				_asset(weapons,"weapons/sword.glb",Vector3(0.85,0.7,0),Vector3(1,1.7,1)).name = "Sword"
-				_asset(weapons,"weapons/bow.glb",Vector3(1.05,0.85,0.5),Vector3(1,1.5,1)).name = "Bow"
+				for i in data.members.size():
+					var hand = Node3D.new()
+					hand.name = "Player%d" % data.members[i]
+					weapons.add_child(hand)
+					var side = -1 if i % 2 == 0 else 1
+					hand.position = Vector3(side*(1.25+0.18*(i/2)),1.0+0.48*(i/2),0)
+					if i >= 2: _extra_arm(hand,side)
+					_asset(hand,"weapons/sword.glb",Vector3.ZERO,Vector3(1,1.4,1)).name = "Sword"
+					var bow = _asset(hand,"weapons/bow.glb",Vector3(0,0.1,0.2),Vector3(1,1.25,1))
+					bow.name = "Bow"
+					bow.rotation.x = PI/2
 			_label3d(root, Vector3(0, height + 0.4, 0), "").name = "Name"
 			if is_body:
 				_label3d(root, Vector3(0, height + 1, 0), "", 22).name = "Power"
@@ -1075,6 +1124,10 @@ func _make_visual(kind: String, data: Dictionary) -> Node3D:
 				sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
 				sprite.alpha_scissor_threshold = 0.15
 				sprite.modulate.a = 1.0
+		"loot":
+			var gem = _asset(root,"kenney/potion.glb",Vector3(0,0.2,0),Vector3(0.45,0.6,0.45))
+			_solid_projectile_material(gem,Color("ffce55"))
+			_label3d(root,Vector3(0,1.1,0),"%d coins" % data.value,20)
 		"pickups":
 			_asset(root, "kenney/column.glb", Vector3.ZERO, Vector3(1.2, 0.5, 1.2))
 			_asset(root, "kenney/potion.glb", Vector3(0, 0.6, 0), Vector3(0.7, 0.9, 0.7)).name = "Crystal"
@@ -1143,6 +1196,11 @@ func _launch_jump(body: Dictionary) -> void:
 	body.position.y += 0.06
 
 func _load_map(index: int) -> void:
+	loot.clear()
+	shop_stock.clear()
+	shop_labels.clear()
+	encounter_started.clear()
+	region_kills = [0,0,0,0]
 	map_index = index
 	terrain = preload("res://scripts/outdoor_level.gd") if index == 0 else preload("res://scripts/ruins_level.gd")
 	ROOMS = ["TRAILHEAD", "WHISPERING GROVE", "SUNLIT RIDGE", "WARDEN SUMMIT"] if index == 0 else ["CARAVAN CAMP", "BROKEN COURT", "PILLAR PASS", "AMBER SANCTUM"]
@@ -1154,6 +1212,7 @@ func _load_map(index: int) -> void:
 	for visual in visuals.values(): visual.queue_free()
 	visuals.clear()
 	walls.clear()
+	rock_surfaces.clear()
 	platforms.clear()
 	plates.clear()
 	plate_visuals.clear()
@@ -1242,6 +1301,8 @@ func _begin_transform_visual(visual: Node3D, data: Dictionary) -> void:
 
 func _floor_height(pos: Vector3, previous_y: float = -INF) -> float:
 	var height = terrain.elevation(pos)
+	var rock = _rock_height(pos)
+	if maxf(pos.y,previous_y) >= rock - 0.35: height = maxf(height,rock)
 	for slab in platforms:
 		if slab.rect.has_point(Vector2(pos.x,pos.z)) and maxf(pos.y,previous_y) >= slab.top - 0.08:
 			height = maxf(height,slab.top)
@@ -1296,9 +1357,179 @@ func _solid_projectile_material(node: Node, color: Color) -> void:
 	for child in node.get_children(): _solid_projectile_material(child,color)
 
 func _climbable(pos: Vector3, radius: float) -> bool:
+	for direction in [Vector3.LEFT,Vector3.RIGHT,Vector3.FORWARD,Vector3.BACK]:
+		if _rock_height(pos + direction * (radius + 0.3)) > pos.y + 0.35: return true
 	var point = Vector2(pos.x,pos.z)
 	for slab in platforms:
 		if pos.y >= slab.top + 0.12 or pos.y < slab.bottom - 0.3: continue
 		var nearest = Vector2(clampf(point.x,slab.rect.position.x,slab.rect.end.x),clampf(point.y,slab.rect.position.y,slab.rect.end.y))
 		if point.distance_to(nearest) < radius+0.75 and not slab.rect.has_point(point): return true
 	return false
+
+# Shared currency is awarded once per enemy, including across checkpoint retries.
+func _drop_coins(enemy: Dictionary) -> void:
+	var claim = enemy.reward_key if enemy.reward_key != "" else "enemy:%d" % enemy.id
+	if coin_claims.has(claim): return
+	coin_claims[claim] = true
+	region_kills[enemy.get("region",stage)] += 1
+	var id = _id()
+	loot[id] = {"id":id,"position":terrain.ground(enemy.position),"value":40 if enemy.kind == "boss" else (10 if enemy.kind == "brute" else 6)}
+
+func _collect_coins() -> void:
+	for id in loot.keys():
+		for body in bodies.values():
+			if body.position.distance_to(loot[id].position) < 2.4:
+				coins += loot[id].value
+				loot.erase(id)
+				break
+
+func _spawn_roamers() -> void:
+	spawn_rng.randomize()
+	for region in range(4):
+		for i in 5:
+			for attempt in 40:
+				var p = terrain.ground(Vector3(spawn_rng.randf_range(-39,39),0,CENTERS[region]+spawn_rng.randf_range(-12,8)))
+				if region == 0 and p.distance_to(Vector3(0,0,48)) < 15: continue
+				var near_shop = false
+				for location in _shop_locations():
+					if p.distance_to(location) < 10: near_shop = true
+				if near_shop or not _can_occupy(p,0.9): continue
+				var id = _spawn_enemy(p,["crawler","skeleton","bat","brute"][spawn_rng.randi_range(0,3)],"map%d:roamer:%d:%d" % [map_index,region,i])
+				enemies[id].region = region
+				break
+
+func _shop_locations() -> Array:
+	return [terrain.ground(Vector3(4,0,36)),terrain.ground(Vector3(0,0,-2)),terrain.ground(Vector3(0,0,-52))]
+
+func _build_shops() -> void:
+	var locations = _shop_locations()
+	for shop in locations.size():
+		var location = locations[shop]
+		_asset($GeneratedGeometry,"nature/tent_smallOpen.glb",location+Vector3(0,0,-3),Vector3(5,3,3))
+		_label3d($GeneratedGeometry,location+Vector3(0,4,0),"TRAIL SHOP · shared coins\nStand by an item · F / L to buy",25)
+		for item in 3:
+			var pos = location+Vector3((item-1)*3.0,0,0)
+			pos = terrain.ground(pos)
+			_asset($GeneratedGeometry,"kenney/column.glb",pos,Vector3(1,0.65,1))
+			_asset($GeneratedGeometry,"kenney/potion.glb" if item != 1 else "weapons/sword.glb",pos+Vector3(0,0.7,0),Vector3(0.6,0.9,0.6))
+			var power = (["Ember","Frost","Storm"] if map_index == 0 else ["Venom","Gale","Storm"])[shop]
+			var label = _label3d($GeneratedGeometry,pos+Vector3(0,2,0),["HEAL PARTY · 20","+10% DAMAGE · 60",power+" · 45 (solo)"][item],18)
+			label.set_meta("offer",label.text)
+			shop_labels["%d:%d" % [shop,item]] = label
+
+func _shop_interact(player: Dictionary, body: Dictionary) -> bool:
+	var locations = _shop_locations()
+	for shop in locations.size():
+		for item in 3:
+			var pos = terrain.ground(locations[shop]+Vector3((item-1)*3.0,0,0))
+			if body.position.distance_to(pos) > 1.65: continue
+			var key = "%d:%d" % [shop,item]
+			if shop_stock.get(key,false):
+				_message("Sold out here. Try the next trail shop.")
+				return true
+			if item == 2 and (body.members.size() > 1 or player.elements.size() >= _power_capacity()):
+				_message("Power purchase needs a solo slime with an empty power slot.")
+				return true
+			if item == 1 and damage_upgrades >= 3:
+				_message("Party damage upgrades are at maximum (+30%).")
+				return true
+			if item == 0:
+				var injured = false
+				for b in bodies.values():
+					if b.health < b.max_health: injured = true
+				if not injured:
+					_message("Everyone is already healthy.")
+					return true
+			var cost = [20,60,45][item]
+			if coins < cost:
+				_message("Need %d coins. Shared wallet: %d." % [cost,coins])
+				return true
+			coins -= cost
+			shop_stock[key] = true
+			if item == 0:
+				for b in bodies.values(): b.health = b.max_health
+			elif item == 1: damage_upgrades += 1
+			else:
+				var power = (["Ember","Frost","Storm"] if map_index == 0 else ["Venom","Gale","Storm"])[shop]
+				player.elements.append(power)
+				player.element = " + ".join(player.elements)
+			_message("Purchased! Shared coins: %d" % coins)
+			return true
+	return false
+
+# Walkable heights come directly from the licensed rock triangles, not box walls.
+func _register_rock(node: Node3D) -> void:
+	if node is MeshInstance3D:
+		var faces = node.mesh.get_faces()
+		var transformed = PackedVector3Array()
+		for vertex in faces: transformed.append(node.global_transform * vertex)
+		rock_surfaces.append({"bounds":node.global_transform * node.get_aabb(),"faces":transformed})
+		var body = StaticBody3D.new()
+		node.add_child(body)
+		var collision = CollisionShape3D.new()
+		collision.shape = node.mesh.create_trimesh_shape()
+		body.add_child(collision)
+	for child in node.get_children():
+		if child is Node3D and not child is StaticBody3D: _register_rock(child)
+
+func _rock_height(pos: Vector3) -> float:
+	var height = -INF
+	for rock in rock_surfaces:
+		var bounds: AABB = rock.bounds
+		if pos.x < bounds.position.x or pos.x > bounds.end.x or pos.z < bounds.position.z or pos.z > bounds.end.z: continue
+		var faces: PackedVector3Array = rock.faces
+		for i in range(0,faces.size(),3):
+			var a = faces[i]
+			var b = faces[i+1]
+			var c = faces[i+2]
+			var determinant = (b.z-c.z)*(a.x-c.x)+(c.x-b.x)*(a.z-c.z)
+			if absf(determinant) < 0.00001: continue
+			var u = ((b.z-c.z)*(pos.x-c.x)+(c.x-b.x)*(pos.z-c.z))/determinant
+			var v = ((c.z-a.z)*(pos.x-c.x)+(a.x-c.x)*(pos.z-c.z))/determinant
+			if u >= -0.001 and v >= -0.001 and u+v <= 1.001:
+				height = maxf(height,u*a.y+v*b.y+(1-u-v)*c.y)
+	return height
+
+# Reuse the existing CC0 slime's right arm vertices for additional members.
+# No new character geometry is authored; the source model supplies the hands.
+func _extra_arm(parent: Node3D, side: int) -> void:
+	var source = load("res://assets/quaternius/fusion.glb").instantiate()
+	var meshes = source.find_children("*","MeshInstance3D",true,false)
+	var arm = ArrayMesh.new()
+	for instance in meshes:
+		for surface in instance.mesh.get_surface_count():
+			var arrays = instance.mesh.surface_get_arrays(surface)
+			var bones = arrays[Mesh.ARRAY_BONES]
+			var weights = arrays[Mesh.ARRAY_WEIGHTS]
+			if bones == null or weights == null: continue
+			var indices = arrays[Mesh.ARRAY_INDEX]
+			var selected = PackedInt32Array()
+			for i in range(0,indices.size(),3):
+				var keep = true
+				for j in 3:
+					var influence = 0.0
+					for k in 4:
+						var at = indices[i+j]*4+k
+						if bones[at] in [9,10,11]: influence += weights[at]
+					if influence < 0.5: keep = false
+				if keep:
+					for j in 3: selected.append(indices[i+j])
+			if selected.is_empty(): continue
+			arrays[Mesh.ARRAY_INDEX] = selected
+			arrays[Mesh.ARRAY_BONES] = null
+			arrays[Mesh.ARRAY_WEIGHTS] = null
+			arm.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+			arm.surface_set_material(arm.get_surface_count()-1,instance.mesh.surface_get_material(surface))
+	var mesh = MeshInstance3D.new()
+	mesh.name = "ExtraArm"
+	mesh.mesh = arm
+	parent.add_child(mesh)
+	# Source vertices retain their bind-pose position; center the selected faces.
+	var faces = arm.get_faces()
+	if not faces.is_empty():
+		var bounds = AABB(faces[0],Vector3.ZERO)
+		for vertex in faces: bounds = bounds.expand(vertex)
+		mesh.scale = Vector3.ONE * (0.65 / maxf(bounds.size.x,maxf(bounds.size.y,bounds.size.z)))
+		mesh.scale.x *= side
+		mesh.position = -bounds.get_center()*mesh.scale + Vector3(-side*0.2,0,0)
+	source.free()

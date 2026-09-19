@@ -82,7 +82,7 @@ func run() -> void:
 	w.stage = 2
 	w._reset_party()
 	w._start_encounter()
-	check(w.enemies.size() == 6, "Second combat chamber has six enemies")
+	check(w.enemies.values().filter(func(e): return e.region == 2).size() == 6, "Second landmark adds six enemies without deleting survivors")
 	w.stage = 3
 	w._reset_party()
 	w._start_encounter()
