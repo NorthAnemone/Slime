@@ -19,8 +19,12 @@ static func trail_x(z: float) -> float:
 	if z > -28: return lerpf(20, -18, (z + 28) / 40)
 	return lerpf(0, 20, clampf((z + 68) / 40, 0, 1))
 
+static func bounds() -> Rect2: return Rect2(-48,-98,96,163)
+static func town_locations() -> Array: return [ground(Vector3(-28,0,20)),ground(Vector3(29,0,-42))]
+
 static func build(w: Node3D) -> void:
 	var root = w.get_node("GeneratedGeometry")
+	for i in town_locations().size(): w._build_side_town(root,town_locations()[i],i)
 	# Each sloped surface is an existing grass model, positioned and rotated.
 	for span in [Vector2(72, 26), Vector2(26, 6), Vector2(6, -22), Vector2(-22, -42), Vector2(-42, -102)]:
 		var z = (span.x + span.y) / 2
@@ -45,6 +49,8 @@ static func build(w: Node3D) -> void:
 			if Vector2(p.x - mark.x, p.z - mark.z).length() < 13: clear = true
 		for cache_pos in [Vector3(-34, 0, 30), Vector3(36, 0, -3), Vector3(-30, 0, -48)]:
 			if Vector2(p.x - cache_pos.x, p.z - cache_pos.z).length() < 5: clear = true
+		for town in town_locations():
+			if p.distance_to(town) < 12: clear = true
 		if p.x > 24 and p.x < 43 and p.z < -22 and p.z > -49: clear = true
 		for cache in [Vector3(32,0,26),Vector3(-34,0,-3),Vector3(-30,0,-70),Vector3(-36,0,22),Vector3(35,0,-3),Vector3(-35,0,-34),Vector3(-26,0,-76)]:
 			if Vector2(p.x-cache.x,p.z-cache.z).length() < 5: clear = true
@@ -54,8 +60,7 @@ static func build(w: Node3D) -> void:
 		var height = rng.randf_range(7, 14)
 		var tree = w._asset(root, "nature/tree_pineTallA.glb" if i % 3 else "nature/tree_pineRoundA.glb", ground(p), Vector3(height * 0.48, height, height * 0.48))
 		tree.rotation.y = rng.randf_range(0, TAU)
-		w.walls.append(Rect2(p.x - 0.4, p.z - 0.4, 0.8, 0.8))
-		_camera_blocker(root, ground(p) + Vector3(0, 4, 0), Vector3(0.85, 8, 0.85))
+		w._register_rock(tree)
 	for i in 135:
 		var p = ground(Vector3(rng.randf_range(-43, 43), 0, rng.randf_range(-95, 60)))
 		if absf(p.x - trail_x(p.z)) < 5: continue

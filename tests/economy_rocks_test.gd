@@ -14,9 +14,16 @@ func run() -> void:
 	check(w.enemies.size() >= 12,"Random enemies populate the map")
 	check(w.shop_labels.size() == 9,"Three shops each display three offers")
 	var b = w.bodies[w.players[1].body_id]
-	var rock = w.rock_surfaces[0].bounds
-	var pos = rock.get_center()
-	var top = w._rock_height(pos)
+	var pos = Vector3.ZERO
+	var top = -INF
+	for surface in w.rock_surfaces:
+		var candidate = surface.bounds.get_center()
+		var candidate_top = w._rock_height(candidate)
+		candidate.y = candidate_top
+		if candidate_top > w.terrain.elevation(candidate)+1 and w._can_occupy(candidate,0.7):
+			pos = candidate
+			top = candidate_top
+			break
 	check(top > w.terrain.elevation(pos)+1,"Rock surface sampled from model triangles")
 	pos.y = top
 	check(w._can_occupy(pos,0.7),"Rock top is not an infinite wall")

@@ -34,6 +34,9 @@ func run() -> void:
 	w._apply(w._snapshot())
 	await create_timer(1).timeout
 	await snap("six-hands")
+	for id in range(3,7):
+		body.members.erase(id)
+		w.players.erase(id)
 	w.complete = true
 	w._next_map()
 	w.set_physics_process(false)
@@ -41,5 +44,13 @@ func run() -> void:
 	w._apply(w._snapshot())
 	await create_timer(1).timeout
 	await snap("ruins-shops")
+	w.complete = true
+	w._next_map()
+	w.set_physics_process(false)
+	w.enemies.clear()
+	w._apply(w._snapshot())
+	game.player_map.toggle_map()
+	await create_timer(1).timeout
+	await snap("procedural-floor-map")
 	game.free()
 	quit()

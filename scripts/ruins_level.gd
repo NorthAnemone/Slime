@@ -12,8 +12,11 @@ static func trail_x(z: float) -> float:
 	if z > 12: return lerpf(22, 0, clampf((z - 12) / 36, 0, 1))
 	if z > -28: return lerpf(-20, 22, (z + 28) / 40)
 	return lerpf(0, -20, clampf((z + 68) / 40, 0, 1))
+static func bounds() -> Rect2: return Rect2(-48,-98,96,163)
+static func town_locations() -> Array: return [ground(Vector3(-30,0,22)),ground(Vector3(29,0,-48))]
 static func build(w: Node3D) -> void:
 	var root = w.get_node("GeneratedGeometry")
+	for i in town_locations().size(): w._build_side_town(root,town_locations()[i],i)
 	for span in [Vector2(72,4),Vector2(4,-16),Vector2(-16,-38),Vector2(-38,-58),Vector2(-58,-102)]:
 		var z = (span.x + span.y) / 2
 		var rise = elevation(Vector3(0,0,span.y)) - elevation(Vector3(0,0,span.x))
@@ -45,6 +48,8 @@ static func build(w: Node3D) -> void:
 			if Vector2(p.x-mark.x,p.z-mark.z).length() < 17: clear = true
 		for cache_pos in [Vector3(-34,0,30),Vector3(36,0,-3),Vector3(-30,0,-48)]:
 			if Vector2(p.x-cache_pos.x,p.z-cache_pos.z).length() < 6: clear = true
+		for town in town_locations():
+			if p.distance_to(town) < 12: clear = true
 		if p.x > 24 and p.x < 43 and p.z < -22 and p.z > -49: clear = true
 		for cache in [Vector3(32,0,26),Vector3(-34,0,-3),Vector3(-30,0,-70),Vector3(-36,0,22),Vector3(35,0,-3),Vector3(-35,0,-34),Vector3(-26,0,-76)]:
 			if Vector2(p.x-cache.x,p.z-cache.z).length() < 5: clear = true

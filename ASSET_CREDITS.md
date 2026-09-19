@@ -42,3 +42,5 @@ Build 0.10 adds CC0 weapons with original geometry and materials:
 Source records and CC0 legal text are included in `assets/weapons/`. Weapon placement and swing motion, taller terrace layouts and rune-dial text are configured in Godot; no custom artwork was created.
 
 Build 0.11 reuses the existing Quaternius slime arm vertices for extra fused-player arms, Kenney potions for gold pickups, and Kenney tents/columns for shops. No new artwork was generated.
+
+Build 0.12 reuses the same credited CC0 nature, structure, potion and banner models for generated floors, cities, towns, hospitals, shops and bounty boards. The map and tracker are functional code-rendered UI. No new artwork was generated.

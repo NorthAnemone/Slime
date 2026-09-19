@@ -9,7 +9,7 @@ const COLORS = [Color("#72ef9b"), Color("#65d5ff"), Color("#ff8fd8"), Color("#ff
 const ELEMENTS = {"Ember": Color("#ff9454"), "Frost": Color("#75e1ff"), "Storm": Color("#c5a1ff"), "Venom": Color("#a6e34b"), "Gale": Color("#e4ffff")}
 var terrain = preload("res://scripts/outdoor_level.gd")
 const CameraRig = preload("res://scripts/exploration_camera.gd")
-var ROOMS = ["TRAILHEAD", "WHISPERING GROVE", "SUNLIT RIDGE", "WARDEN SUMMIT"]
+var ROOMS = ["FLOOR CITY", "WHISPERING GROVE", "SUNLIT RIDGE", "WARDEN SUMMIT"]
 const CENTERS = [48.0, 12.0, -28.0, -68.0]
 var PORTAL = Vector3(0, 8.4, -89)
 var rock_surfaces: Array = []
@@ -31,6 +31,7 @@ var loot: Dictionary = {}
 var coin_claims: Dictionary = {}
 var shop_stock: Dictionary = {}
 var shop_labels: Dictionary = {}
+var side_quests: Dictionary = {}
 var damage_upgrades = 0
 var region_kills = [0,0,0,0]
 var encounter_started: Dictionary = {}
@@ -107,6 +108,15 @@ func _start() -> void:
 	if map_index == 1:
 		positions = [Vector3(-22,0,36),Vector3(-36,0,22),Vector3(35,0,-3),Vector3(-35,0,-34),Vector3(32,0,-42),Vector3(-26,0,-76)]
 		elements = ["Venom","Gale","Storm","Frost","Venom","Ember"]
+	elif map_index >= 2:
+		positions = []
+		elements = []
+		var floor_rng = RandomNumberGenerator.new()
+		floor_rng.seed = 4201+map_index*3571
+		for i in 6+mini(3,map_index/2):
+			var region = 1+i%3
+			positions.append(terrain.LANDMARKS[region]+Vector3(floor_rng.randf_range(-24,24),0,floor_rng.randf_range(-14,14)))
+			elements.append(ELEMENTS.keys()[floor_rng.randi_range(0,ELEMENTS.size()-1)])
 	for i in positions.size():
 		var pos = positions[i]
 		pos.y = _floor_height(Vector3(pos.x,100,pos.z))
@@ -124,7 +134,7 @@ func _add_player(peer_id: int, player_name: String) -> void:
 	players[peer_id] = {"id": peer_id, "name": player_name.left(18), "color": COLORS[players.size() % 6],
 		"body_id": 0, "score": 0, "element": "", "elements": [], "offer": 0.0, "last_input": clock,
 		"move": Vector2.ZERO, "aim": Vector2.UP, "attack": false, "weapon": "Sword", "sprint": false, "climb": false, "shot": 0.0}
-	_solo(peer_id, Vector3(-2 + players.size() * 1.7, 0, CENTERS[stage] + 8), 1.0)
+	_solo(peer_id, terrain.ground(terrain.LANDMARKS[stage]+Vector3(-2+players.size()*1.7,0,8)), 1.0)
 
 func _solo(peer_id: int, pos: Vector3, ratio: float) -> void:
 	pos.y = maxf(pos.y, terrain.elevation(pos))
@@ -168,7 +178,7 @@ func _message(message: String) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.echo:
 		return
-	for kind in ["fuse", "split", "collect", "jump", "weapon"]:
+	for kind in ["fuse", "split", "collect", "jump", "weapon", "city_teleport"]:
 		if event.is_action_pressed(kind):
 			if is_host:
 				_action(local_peer_id, kind)
@@ -186,13 +196,22 @@ func _unhandled_input(event: InputEvent) -> void:
 		_restart()
 
 func _action(peer_id: int, kind: String) -> void:
-	if not players.has(peer_id) or complete:
+	if not players.has(peer_id) or (complete and kind != "city_teleport"):
 		return
 	var p = players[peer_id]
 	if not bodies.has(p.body_id):
 		return
 	var body = bodies[p.body_id]
 	match kind:
+		"city_teleport":
+			var nearest_enemy = _nearest(body.position,enemies)
+			if not nearest_enemy.is_empty() and body.position.distance_to(nearest_enemy.position) < 12:
+				_message("The city crystal cannot open while an enemy is nearby.")
+				return
+			body.position = terrain.ground(terrain.LANDMARKS[0]+Vector3(0,0,7))
+			body.velocity = Vector3.ZERO
+			body.vertical_speed = 0
+			_message("Returned to Floor %d City." % (map_index+1))
 		"weapon":
 			p.weapon = ["Sword","Bow","Magic"][( ["Sword","Bow","Magic"].find(p.weapon) + 1) % 3]
 			_message("%s · %s equipped" % [p.name,p.weapon])
@@ -210,6 +229,7 @@ func _action(peer_id: int, kind: String) -> void:
 			if body.members.size() > 1:
 				_split(body)
 		"collect":
+			if _town_interact(body): return
 			if _shop_interact(p, body): return
 			if _interact_runes(body): return
 			if body.members.size() > 1:
@@ -557,7 +577,8 @@ func _split(body: Dictionary) -> void:
 func _spawn_enemy(pos: Vector3, kind: String, reward_key: String = "") -> int:
 	pos = terrain.ground(pos)
 	var id = _id()
-	var hp = (1800.0 if kind == "boss" else (150.0 if kind == "brute" else (100.0 if kind == "skeleton" else (75.0 if kind == "bat" else 85.0)))) * (1.4 if map_index == 1 else 1.0)
+	var hp_scale = 1.0 if map_index == 0 else 1.4+(map_index-1)*0.25
+	var hp = (1800.0 if kind == "boss" else (150.0 if kind == "brute" else (100.0 if kind == "skeleton" else (75.0 if kind == "bat" else 85.0)))) * hp_scale
 	enemies[id] = {"id": id, "position": pos, "kind": kind, "radius": 2.1 if kind == "boss" else 0.8,
 		"health": hp, "max_health": hp, "reward_key": reward_key, "region": stage, "attack_at": clock + 2.0, "cast_at": 0.0, "dash_until": 0.0, "facing": Vector3.FORWARD, "aim": Vector3.FORWARD, "flash": 0.0,
 		"trail_shock_at": 0.0, "poison_until": 0.0, "poison_damage": 0.0, "burn_until": 0.0, "burn_damage": 0.0, "frost_until": 0.0, "slow": false, "enraged": false}
@@ -712,6 +733,7 @@ func _restart() -> void:
 	damage_upgrades = 0
 	coin_claims.clear()
 	shop_stock.clear()
+	side_quests.clear()
 	loot.clear()
 	enemies.clear()
 	encounter_started.clear()
@@ -794,7 +816,8 @@ func _nearest(pos: Vector3, collection: Dictionary) -> Dictionary:
 	return best
 
 func _can_occupy(pos: Vector3, radius: float) -> bool:
-	if absf(pos.x) + radius > 48 or pos.z - radius < -98 or pos.z + radius > 65:
+	var allowed := map_bounds()
+	if pos.x-radius < allowed.position.x or pos.x+radius > allowed.end.x or pos.z-radius < allowed.position.y or pos.z+radius > allowed.end.y:
 		return false
 	if _rock_height(pos) > pos.y + 0.32: return false
 	var point = Vector2(pos.x, pos.z)
@@ -837,7 +860,7 @@ func _snapshot() -> Dictionary:
 		for id in b.members:
 			copy.offering = copy.offering or players[id].offer > clock
 		body_array.append(copy)
-	return {"coins": coins, "loot": loot.values().duplicate(true), "shop_stock": shop_stock.duplicate(), "region_kills": region_kills.duplicate(), "damage_upgrades": damage_upgrades, "clock": clock, "map_index": map_index, "puzzle_open": puzzle_open, "puzzle_charge": puzzle_charge, "rune_states": rune_states.duplicate(), "clues_found": clues_found, "party_level": party_level, "party_xp": party_xp, "xp_needed": _xp_needed(), "stage": stage, "cleared": cleared, "victory": victory, "complete": complete, "players": roster,
+	return {"coins": coins, "loot": loot.values().duplicate(true), "shop_stock": shop_stock.duplicate(), "side_quests":side_quests.duplicate(true), "region_kills": region_kills.duplicate(), "damage_upgrades": damage_upgrades, "clock": clock, "map_index": map_index, "floor_name":floor_name(), "puzzle_open": puzzle_open, "puzzle_charge": puzzle_charge, "rune_states": rune_states.duplicate(), "clues_found": clues_found, "party_level": party_level, "party_xp": party_xp, "xp_needed": _xp_needed(), "stage": stage, "cleared": cleared, "victory": victory, "complete": complete, "players": roster,
 		"bodies": body_array, "enemies": enemies.values().duplicate(true), "trails": trails.values().duplicate(true),
 		"pickups": pickups.values().duplicate(true), "shots": shots.values().duplicate(true), "hazards": hazards.values().duplicate(true)}
 
@@ -850,7 +873,7 @@ func _apply(data: Dictionary) -> void:
 	clues_found = data.get("clues_found",0)
 	var body = _local_body()
 	if not body.is_empty():
-		local_stats_changed.emit(body.health, body.max_health, body.members.size(), 0, data.enemies.size(), 1, data.victory)
+		local_stats_changed.emit(body.health, body.max_health, body.members.size(), 0, data.enemies.size(), map_index+1, data.victory)
 	roster_changed.emit(data.players)
 	var boss_health = 0.0
 	var boss_max = 0.0
@@ -864,12 +887,12 @@ func _apply(data: Dictionary) -> void:
 	elif data.stage in [1,2] and not data.cleared[data.stage]:
 		objective = "Defeat enemies in this region · %d / %d. Other enemies are optional." % [data.get("region_kills",[0,0,0,0])[data.stage],4 if data.stage == 1 else 6]
 	if data.stage == 3 and not data.victory:
-		objective = ("Moss Warden" if map_index == 0 else "Amber Warden") + " · dodge red warnings; jump to evade ground slams."
+		objective = ("Moss Warden" if map_index == 0 else ("Amber Warden" if map_index == 1 else "Floor %d Warden" % (map_index+1))) + " · dodge red warnings; jump to evade ground slams."
 	if map_index == 1 and data.stage == 1 and data.cleared[1] and not puzzle_open:
 		objective = "Read both hidden inscriptions (F/L), order the rune dials, then fuse to turn the lock."
 	if data.victory: objective = "Reach the summit arch together."
-	if data.complete: objective = ("MAP CLEAR · F8: enter Amber Ruins · R: restart" if map_index == 0 else "BOTH MAPS CLEARED · R: restart expedition")
-	encounter_changed.emit({"coins": data.get("coins",0), "title": ("THE WILDS · " if map_index == 0 else "AMBER RUINS · ") + ROOMS[data.stage], "objective": objective, "boss_health": boss_health,
+	if data.complete: objective = "FLOOR %d CLEAR · F8: ascend to Floor %d · V: return to city" % [map_index+1,map_index+2]
+	encounter_changed.emit({"coins": data.get("coins",0), "title": "FLOOR %d · %s · %s" % [map_index+1,floor_name(),ROOMS[data.stage]], "objective": objective, "boss_health": boss_health,
 		"boss_max": boss_max, "power": body.get("power_name", ""), "complete": data.complete, "party_level": data.party_level, "party_xp": data.party_xp, "xp_needed": data.xp_needed})
 
 func _local_body() -> Dictionary:
@@ -921,6 +944,11 @@ func _style_asset(node: Node, nature: bool) -> void:
 						if original.resource_name == "grass": mat.albedo_color = Color("b7a078")
 						if original.resource_name == "dirt": mat.albedo_color = Color("9e754e")
 						if original.resource_name == "stone": mat.albedo_color = Color("ad8964")
+					elif map_index >= 2 and nature:
+						var theme = posmod(map_index-2,3)
+						if original.resource_name == "grass": mat.albedo_color = [Color("6d9b64"),Color("b7a078"),Color("677b82")][theme]
+						if original.resource_name == "dirt": mat.albedo_color = [Color("74634b"),Color("a46f45"),Color("5e6572")][theme]
+						if original.resource_name == "stone": mat.albedo_color = [Color("778682"),Color("b68b65"),Color("788093")][theme]
 					surface_cache[key] = mat
 				node.set_surface_override_material(i, surface_cache[key])
 	for child in node.get_children(): _style_asset(child, nature)
@@ -976,7 +1004,9 @@ func _label3d(parent: Node3D, pos: Vector3, text: String, size: int = 32) -> Lab
 
 func _build_level() -> void:
 	terrain.build(self)
-	preload("res://scripts/traversal.gd").build(self)
+	if map_index < 2:
+		_build_floor_city()
+		preload("res://scripts/traversal.gd").build(self)
 	_build_shops()
 
 func _animate(root: Node, action_name: String) -> void:
@@ -1199,11 +1229,20 @@ func _load_map(index: int) -> void:
 	loot.clear()
 	shop_stock.clear()
 	shop_labels.clear()
+	side_quests.clear()
 	encounter_started.clear()
 	region_kills = [0,0,0,0]
 	map_index = index
-	terrain = preload("res://scripts/outdoor_level.gd") if index == 0 else preload("res://scripts/ruins_level.gd")
-	ROOMS = ["TRAILHEAD", "WHISPERING GROVE", "SUNLIT RIDGE", "WARDEN SUMMIT"] if index == 0 else ["CARAVAN CAMP", "BROKEN COURT", "PILLAR PASS", "AMBER SANCTUM"]
+	if index == 0:
+		terrain = preload("res://scripts/outdoor_level.gd")
+		ROOMS = ["FLOOR CITY", "WHISPERING GROVE", "SUNLIT RIDGE", "WARDEN SUMMIT"]
+	elif index == 1:
+		terrain = preload("res://scripts/ruins_level.gd")
+		ROOMS = ["FLOOR CITY", "BROKEN COURT", "PILLAR PASS", "AMBER SANCTUM"]
+	else:
+		terrain = preload("res://scripts/procedural_floor.gd").new()
+		terrain.configure(index+1)
+		ROOMS = terrain.room_names()
 	PORTAL = terrain.EXIT
 	for child in $GeneratedGeometry.get_children():
 		$GeneratedGeometry.remove_child(child)
@@ -1225,8 +1264,8 @@ func _load_map(index: int) -> void:
 	_build_level()
 
 func _next_map() -> void:
-	if not is_host or not complete or map_index != 0: return
-	_load_map(1)
+	if not is_host or not complete: return
+	_load_map(map_index+1)
 	stage = 0
 	victory = false
 	complete = false
@@ -1237,7 +1276,7 @@ func _next_map() -> void:
 	_reset_party()
 	_start_encounter()
 	_apply(_snapshot())
-	_message("AMBER RUINS · your levels and powers carried over. Find the broken court!")
+	_message("FLOOR %d · %s · levels, powers and coins carried upward." % [map_index+1,floor_name()])
 
 func _gust(enemy: Dictionary, direction: Vector3, stacks: int) -> void:
 	# Small collision-checked steps prevent gusts from pushing through columns.
@@ -1372,6 +1411,15 @@ func _drop_coins(enemy: Dictionary) -> void:
 	if coin_claims.has(claim): return
 	coin_claims[claim] = true
 	region_kills[enemy.get("region",stage)] += 1
+	for key in side_quests:
+		var quest = side_quests[key]
+		if quest.status == "active" and quest.region == enemy.get("region",stage):
+			quest.progress += 1
+			if quest.progress >= quest.target:
+				quest.status = "complete"
+				coins += quest.reward
+				_award_xp(quest.xp,"floor%d:town:%s" % [map_index,key])
+				_message("SIDE QUEST COMPLETE · +%d coins · +%d XP" % [quest.reward,quest.xp])
 	var id = _id()
 	loot[id] = {"id":id,"position":terrain.ground(enemy.position),"value":40 if enemy.kind == "boss" else (10 if enemy.kind == "brute" else 6)}
 
@@ -1388,8 +1436,10 @@ func _spawn_roamers() -> void:
 	for region in range(4):
 		for i in 5:
 			for attempt in 40:
-				var p = terrain.ground(Vector3(spawn_rng.randf_range(-39,39),0,CENTERS[region]+spawn_rng.randf_range(-12,8)))
-				if region == 0 and p.distance_to(Vector3(0,0,48)) < 15: continue
+				var bounds = map_bounds()
+				var center: Vector3 = terrain.LANDMARKS[region]
+				var p = terrain.ground(Vector3(spawn_rng.randf_range(bounds.position.x+8,bounds.end.x-8),0,center.z+spawn_rng.randf_range(-22,16)))
+				if region == 0 and p.distance_to(terrain.ground(terrain.LANDMARKS[0])) < 22: continue
 				var near_shop = false
 				for location in _shop_locations():
 					if p.distance_to(location) < 10: near_shop = true
@@ -1399,7 +1449,13 @@ func _spawn_roamers() -> void:
 				break
 
 func _shop_locations() -> Array:
-	return [terrain.ground(Vector3(4,0,36)),terrain.ground(Vector3(0,0,-2)),terrain.ground(Vector3(0,0,-52))]
+	var locations: Array = [terrain.ground(terrain.LANDMARKS[0]+Vector3(6,0,-4))]
+	for town in _town_locations(): locations.append(terrain.ground(town+Vector3(5,0,0)))
+	return locations
+
+func _shop_power(shop: int) -> String:
+	var powers = ["Ember","Frost","Storm"] if map_index == 0 else (["Venom","Gale","Storm"] if map_index == 1 else ELEMENTS.keys())
+	return powers[shop%powers.size()]
 
 func _build_shops() -> void:
 	var locations = _shop_locations()
@@ -1412,7 +1468,7 @@ func _build_shops() -> void:
 			pos = terrain.ground(pos)
 			_asset($GeneratedGeometry,"kenney/column.glb",pos,Vector3(1,0.65,1))
 			_asset($GeneratedGeometry,"kenney/potion.glb" if item != 1 else "weapons/sword.glb",pos+Vector3(0,0.7,0),Vector3(0.6,0.9,0.6))
-			var power = (["Ember","Frost","Storm"] if map_index == 0 else ["Venom","Gale","Storm"])[shop]
+			var power = _shop_power(shop)
 			var label = _label3d($GeneratedGeometry,pos+Vector3(0,2,0),["HEAL PARTY · 20","+10% DAMAGE · 60",power+" · 45 (solo)"][item],18)
 			label.set_meta("offer",label.text)
 			shop_labels["%d:%d" % [shop,item]] = label
@@ -1450,7 +1506,7 @@ func _shop_interact(player: Dictionary, body: Dictionary) -> bool:
 				for b in bodies.values(): b.health = b.max_health
 			elif item == 1: damage_upgrades += 1
 			else:
-				var power = (["Ember","Frost","Storm"] if map_index == 0 else ["Venom","Gale","Storm"])[shop]
+				var power = _shop_power(shop)
 				player.elements.append(power)
 				player.element = " + ".join(player.elements)
 			_message("Purchased! Shared coins: %d" % coins)
@@ -1471,6 +1527,75 @@ func _register_rock(node: Node3D) -> void:
 		body.add_child(collision)
 	for child in node.get_children():
 		if child is Node3D and not child is StaticBody3D: _register_rock(child)
+
+func map_bounds() -> Rect2:
+	return terrain.bounds() if terrain.has_method("bounds") else Rect2(-48,-98,96,163)
+
+func floor_name() -> String:
+	if map_index == 0: return "THE WILDS"
+	if map_index == 1: return "AMBER RUINS"
+	return terrain.theme_name()
+
+func _build_floor_city() -> void:
+	var root = $GeneratedGeometry
+	var center = terrain.ground(terrain.LANDMARKS[0])
+	_label3d(root,center+Vector3(0,4,-10),"FLOOR %d CITY · SAFE ZONE · V TO RETURN" % (map_index+1),22)
+	for side in [-1,1]:
+		for offset in [-10,0,10]:
+			var p = terrain.ground(center+Vector3(side*15,0,offset))
+			_asset(root,"kenney/wall.glb",p,Vector3(7,6,2)).rotation.y = PI/2
+	for x in [-8,0,8]:
+		_asset(root,"nature/tent_smallOpen.glb",terrain.ground(center+Vector3(x,0,-8)),Vector3(4.5,3,4))
+
+func _build_side_town(root: Node3D, center: Vector3, index: int) -> void:
+	_label3d(root,center+Vector3(0,5,0),"%s %s" % [floor_name(),["HAVEN","CROSSING","OUTPOST"][index%3]],23)
+	for offset in [Vector3(-5,0,-3),Vector3(5,0,-3),Vector3(5,0,4)]:
+		_asset(root,"nature/tent_smallOpen.glb",terrain.ground(center+offset),Vector3(4,2.7,3.5))
+	var board = terrain.ground(center+Vector3(-4,0,1))
+	_asset(root,"kenney/banner.glb",board,Vector3(1.2,3.2,1.2))
+	_label3d(root,board+Vector3(0,3.4,0),"BOUNTY BOARD · F / L",18)
+	var hospital = terrain.ground(center+Vector3(0,0,1))
+	_asset(root,"kenney/potion.glb",hospital+Vector3(0,0.8,0),Vector3(0.9,1.3,0.9))
+	_label3d(root,hospital+Vector3(0,2.3,0),"HOSPITAL · 12 COINS · F / L",18)
+
+func _town_locations() -> Array:
+	return terrain.town_locations() if terrain.has_method("town_locations") else []
+
+func _town_interact(body: Dictionary) -> bool:
+	var towns = _town_locations()
+	for i in towns.size():
+		var center: Vector3 = towns[i]
+		if body.position.distance_to(terrain.ground(center+Vector3(0,0,1))) < 1.8:
+			var injured = false
+			for party_body in bodies.values():
+				if party_body.health < party_body.max_health: injured = true
+			if not injured:
+				_message("The hospital says your party is already healthy.")
+			elif coins < 12:
+				_message("Hospital treatment costs 12 coins. Shared wallet: %d." % coins)
+			else:
+				coins -= 12
+				for party_body in bodies.values(): party_body.health = party_body.max_health
+				_message("The town hospital restored the whole party.")
+			return true
+		if body.position.distance_to(terrain.ground(center+Vector3(-4,0,1))) < 2:
+			var key = str(i)
+			var quest = side_quests.get(key,{})
+			if quest.is_empty():
+				var nearest_region = 1
+				var best = INF
+				for region in [1,2,3]:
+					var distance = center.distance_squared_to(terrain.LANDMARKS[region])
+					if distance < best: best = distance; nearest_region = region
+				quest = {"status":"active","progress":0,"target":3+posmod(map_index+i,3),"reward":24+map_index*4,"xp":35+map_index*5,"region":nearest_region}
+				side_quests[key] = quest
+				_message("BOUNTY ACCEPTED · defeat %d enemies near %s." % [quest.target,ROOMS[nearest_region]])
+			elif quest.status == "active":
+				_message("BOUNTY · %d / %d enemies · reward %d coins." % [quest.progress,quest.target,quest.reward])
+			else:
+				_message("BOUNTY COMPLETE · this town is safe.")
+			return true
+	return false
 
 func _rock_height(pos: Vector3) -> float:
 	var height = -INF

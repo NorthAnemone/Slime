@@ -23,6 +23,7 @@ var toast_label: Label
 var toast_tween: Tween
 var boss_bar: ProgressBar
 var encounter_label: Label
+var player_map: Control
 
 
 func _ready() -> void:
@@ -124,7 +125,7 @@ func _build_interface() -> void:
 	var controls := _label("Solo: leave elemental trails · Collect powers · Fuse for full strength", 12, Color("ffd66d"))
 	controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(controls)
-	var build_label := _label("BUILD 0.11 · THE WILDS · THIRD-PERSON CO-OP", 10, Color("60736d"))
+	var build_label := _label("BUILD 0.12 · AINCRAD FLOORS · THIRD-PERSON CO-OP", 10, Color("60736d"))
 	build_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(build_label)
 
@@ -201,7 +202,7 @@ func _build_hud() -> void:
 	fusion_label = _pill("SOLO SLIME", Color("d8e8df"))
 	stats.add_child(fusion_label)
 
-	help_label = _pill("E fuse · Q split · F interact · X weapon · Click fight (fused only) · Esc menu", Color("d8e8df"))
+	help_label = _pill("E/Q fuse/split · F interact · V city · M map · P ally arrow · X weapon · Esc menu", Color("d8e8df"))
 	help_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	help_label.position = Vector2(-680, -72)
 	help_label.size = Vector2(658, 60)
@@ -219,6 +220,10 @@ func _build_hud() -> void:
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	toast_panel.add_child(toast_label)
+
+	player_map = preload("res://scripts/player_map.gd").new()
+	player_map.z_index = -1
+	game_hud.add_child(player_map)
 
 
 func _host_game() -> void:
@@ -284,6 +289,7 @@ func _create_world() -> void:
 	world.local_stats_changed.connect(_update_stats)
 	world.roster_changed.connect(_update_roster)
 	world.encounter_changed.connect(_update_encounter)
+	player_map.setup(world)
 
 
 func _on_connection_failed() -> void:
@@ -400,6 +406,10 @@ func _update_encounter(info: Dictionary) -> void:
 	boss_bar.value = info.boss_health
 
 func _unhandled_input(event: InputEvent) -> void:
+	if is_instance_valid(world) and event.is_action_pressed("toggle_map"):
+		player_map.toggle_map()
+	if is_instance_valid(world) and event.is_action_pressed("track_player"):
+		player_map.toggle_tracking()
 	if event.is_action_pressed("ui_cancel") and is_instance_valid(world):
 		multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 		get_tree().reload_current_scene()
@@ -407,7 +417,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _configure_inputs() -> void:
 	var bindings = {"p2_move_left": KEY_LEFT, "p2_move_right": KEY_RIGHT,
 		"p2_move_up": KEY_UP, "p2_move_down": KEY_DOWN, "collect": KEY_F,
-		"p2_collect": KEY_L, "restart_run": KEY_R, "jump": KEY_SPACE, "p2_jump": KEY_ENTER, "climb": KEY_C, "p2_climb": KEY_PERIOD, "weapon": KEY_X, "p2_weapon": KEY_J, "sprint": KEY_SHIFT, "p2_sprint": KEY_CTRL}
+		"p2_collect": KEY_L, "restart_run": KEY_R, "jump": KEY_SPACE, "p2_jump": KEY_ENTER, "climb": KEY_C, "p2_climb": KEY_PERIOD, "weapon": KEY_X, "p2_weapon": KEY_J, "sprint": KEY_SHIFT, "p2_sprint": KEY_CTRL, "city_teleport": KEY_V, "p2_city_teleport": KEY_APOSTROPHE, "toggle_map": KEY_M, "track_player": KEY_P}
 	for event in InputMap.action_get_events("attack"):
 		if event is InputEventKey and event.physical_keycode == KEY_SPACE:
 			InputMap.action_erase_event("attack", event)
